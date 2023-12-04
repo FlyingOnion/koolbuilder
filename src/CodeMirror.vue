@@ -1,6 +1,6 @@
 <template>
   <Codemirror
-    v-model:value="props.code"
+    :value="props.code"
     :options="cmOptions"
     border
     ref="cmRef"
@@ -25,6 +25,7 @@ const props = defineProps<Props>();
 const cmRef = ref<CmComponentRef>();
 const cmOptions: EditorConfiguration = {
   mode: { name: "go" },
+  readOnly: true,
 };
 
 // const onChange = (val: string, cm: Editor) => {
