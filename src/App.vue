@@ -3,7 +3,12 @@ import { computed, ref } from "vue";
 import CodeMirror from "./CodeMirror.vue";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import { Resource, getAlias, group2Versions } from "./helper";
+import {
+  Resource,
+  getAlias,
+  getVersionFromPackage,
+  group2Versions,
+} from "./helper";
 
 const defaultName = "KoolController";
 const goVersionOptions: string[] = [
@@ -117,15 +122,22 @@ const resources = ref<Resource[]>([podResource]);
 const imports = computed<string[]>(() => {
   const set = new Set<string>();
   resources.value.forEach((item) => {
-    if (!(item.isCustomResource && item.package === goModule.value)) {
-      set.add(item.package || "undefined");
+    if (typeof item.package === "undefined") {
+      return;
     }
+    if (!item.isCustomResource && item.kind.length > 0) {
+      set.add(`k8s.io/api/${item.group}/${item.version}`);
+      return;
+    }
+    item.package.length === 0 ||
+      item.package === goModule.value ||
+      set.add(item.package);
   });
   return Array.from(set).sort();
 });
 
 function addResource() {
-  resources.value.push({ kind: "", isCustomResource: true });
+  resources.value.push({ kind: "", package: "", isCustomResource: true });
   console.log(resources.value);
   console.log(imports.value);
 }
@@ -145,6 +157,22 @@ function changeKind(index: number) {
     (i) => i.kind === resources.value[index].kind
   )[0];
   resources.value[index] = { ...newItem };
+}
+
+function resetResource(index: number) {
+  resources.value[index].group = "";
+  resources.value[index].version = "";
+  resources.value[index].package = "";
+  if (resources.value[index].isCustomResource) {
+    resources.value[index].kind = "";
+  }
+}
+
+function tryResetResourceVersion(index: number) {
+  const v = getVersionFromPackage(resources.value[index].package);
+  if (v.length > 0) {
+    resources.value[index].version = v;
+  }
 }
 
 // code
@@ -196,16 +224,15 @@ func mustGetOrLogFatal[T any](v T, err error) T {
 }
 
 func addKnownTypes(s *runtime.Scheme) {
-	${resources.value
-    .filter((item) => item.isCustomResource)
-    .map(
-      (item) => `s.AddKnownTypes(schema.GroupVersion{
-\t\tGroup:   "${item.group}",
-\t\tVersion: "${item.version}",
-\t}, &${goType(item)}{})`
-    )
-    .join("\n\t")}
-}
+${resources.value
+  .filter((item) => item.isCustomResource)
+  .map(
+    (item) => `\ts.AddKnownTypes(schema.GroupVersion{
+\t\tGroup:   "${item.group || "undefined"}",
+\t\tVersion: "${item.version || "undefined"}",
+\t}, &${goType(item)}{})\n`
+  )
+  .join("\n\t")}}
 
 func main() {
 	var kubeconfig string
@@ -219,6 +246,35 @@ func main() {
 
 	config := mustGetOrLogFatal(clientcmd.BuildConfigFromFlags(master, kubeconfig))
 	client := mustGetOrLogFatal(rest.RESTClientFor(config))
+
+	${resources.value
+    .map(
+      (item) =>
+        `${item.kind.toLowerCase() || "unknowntype"}Informer := kool.New${
+          item.isNamespaced ? "Namespaced" : ""
+        }Informer[${goType(item)}](client, 30*time.Second)`
+    )
+    .join("\n\t")}
+
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	controller := New${controllerName.value}(${resources.value.map(
+    (item) => `${item.kind.toLowerCase() || "unknowntype"}Informer, `
+  )}queue, ${retry.value})
+
+	sigC := make(chan os.Signal, 1)
+	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go controller.Run(ctx, 1)
+
+	select {
+	case sig := <-sigC:
+		klog.Infof("Received signal: %s", sig)
+		signal.Stop(sigC)
+		cancel()
+	case <-ctx.Done():
+	}
 }
 `;
 });
@@ -235,7 +291,7 @@ const filesMap = {
 };
 const code = computed<string>(() => {
   const r = filesMap[currentFile.value];
-  return typeof r === "undefined" ? "" : r.value;
+  return r.value || "";
 });
 
 function changeFile(file: string) {
@@ -257,8 +313,13 @@ function kindDeepCopyGen(kind: string): string {
 
 function download() {
   const zip = new JSZip();
-  zip.file("go.mod", _goMod.value);
-  zip.file("main.go", _main.value);
+  for (const file of files) {
+    zip.file(file, filesMap[file].value);
+  }
+  // zip.file("go.mod", _goMod.value);
+  // zip.file("main.go", _main.value);
+  // zip.file("controller.go", _controller.value);
+
   zip.generateAsync({ type: "blob" }).then((content) => {
     saveAs(content, `${controllerName.value}.zip`);
   });
@@ -455,6 +516,7 @@ function download() {
                 :id="'custom-' + index.toString()"
                 type="checkbox"
                 v-model="item.isCustomResource"
+                @change="resetResource(index)"
               />
               <label :for="'custom-' + index.toString()" flex-grow></label>
             </span>
@@ -561,6 +623,23 @@ function download() {
                   {{ version }}
                 </option>
               </select>
+            </span>
+          </div>
+          <!-- package -->
+          <div v-show="item.isCustomResource" flex>
+            <span flex-1 max-w-80>
+              <label :for="'package-' + index.toString()">Package</label>
+            </span>
+            <span flex-1 flex>
+              <input
+                :id="'package-' + index.toString()"
+                v-model="item.package"
+                @change="tryResetResourceVersion(index)"
+                flex-grow
+                border
+                rounded
+                px-2
+              />
             </span>
           </div>
         </template>
