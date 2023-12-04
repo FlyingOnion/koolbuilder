@@ -231,8 +231,7 @@ ${resources.value
 \t\tGroup:   "${item.group || "undefined"}",
 \t\tVersion: "${item.version || "undefined"}",
 \t}, &${goType(item)}{})\n`
-  )
-  .join("\n\t")}}
+  )}}
 
 func main() {
 	var kubeconfig string
@@ -247,14 +246,14 @@ func main() {
 	config := mustGetOrLogFatal(clientcmd.BuildConfigFromFlags(master, kubeconfig))
 	client := mustGetOrLogFatal(rest.RESTClientFor(config))
 
-	${resources.value
-    .map(
-      (item) =>
-        `${item.kind.toLowerCase() || "unknowntype"}Informer := kool.New${
-          item.isNamespaced ? "Namespaced" : ""
-        }Informer[${goType(item)}](client, 30*time.Second)`
-    )
-    .join("\n\t")}
+${resources.value
+  .map(
+    (item) =>
+      `\t${item.kind.toLowerCase() || "unknowntype"}Informer := kool.New${
+        item.isNamespaced ? "Namespaced" : ""
+      }Informer[${goType(item)}](client, 30*time.Second)`
+  )
+  .join("\n")}
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	controller := New${controllerName.value}(${resources.value.map(
@@ -279,11 +278,172 @@ func main() {
 `;
 });
 const _controller = computed<string>(() => {
-  return `package main`;
+  return `package main
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/FlyingOnion/kool"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
+	${imports.value.map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
+)
+
+var (
+	ErrSyncTimeout = errors.New("Timed out waiting for caches to sync")
+)
+
+type ${controllerName.value} struct {
+${resources.value
+  .map(
+    (item) =>
+      `\t${item.kind.toLowerCase() || "unknowntype"}Lister kool.${
+        item.isNamespaced ? "Namespaced" : ""
+      }Lister[${goType(item)}]`
+  )
+  .join("\n")}
+
+${resources.value
+  .map(
+    (item) =>
+      `\t${item.kind.toLowerCase() || "unknowntype"}Synced cache.InformerSynced`
+  )
+  .join("\n")}
+
+	queue        workqueue.RateLimitingInterface
+	retryOnError int
+}
+
+func New${controllerName.value}(
+${resources.value
+  .map(
+    (item) =>
+      `\t${item.kind.toLowerCase() || "unknowntype"}Informer kool.${
+        item.isNamespaced ? "Namespaced" : ""
+      }Informer[${goType(item)}],`
+  )
+  .join("\n")}
+) *${controllerName.value} {
+	c := &${controllerName.value}{
+		queue:        queue,
+		retryOnError: retryOnError,
+	}
+${resources.value
+  .map(
+    (item) =>
+      `\t${
+        item.kind.toLowerCase() || "unknowntype"
+      }Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+\t\tAddFunc: ${
+        item.customHandlers?.findIndex((i) => i === "Add")
+          ? "c.Add${item.kind}"
+          : "nil"
+      },
+\t\tUpdateFunc: ${
+        item.customHandlers?.findIndex((i) => i === "Update")
+          ? "c.Update${item.kind}"
+          : "nil"
+      },
+\t\tDeleteFunc: ${
+        item.customHandlers?.findIndex((i) => i === "Delete")
+          ? "c.Delete${item.kind}"
+          : "nil"
+      },
+\t})`
+  )
+  .join("\n")}
+  
+${resources.value.map((item) =>
+  `\tc.${item.kind.toLowerCase() || "unknowntype"}Lister = ${item.kind.toLowerCase() || "unknowntype"}Informer.Lister()`+
+  `\n\tc.${item.kind.toLowerCase() || "unknowntype"}Synced = ${item.kind.toLowerCase() || "unknowntype"}Informer.Informer().HasSynced`
+).join("\n")}
+	return c
+}
+
+func (c *${controllerName.value}) Run(ctx context.Context, workers int) {
+	defer utilruntime.HandleCrash()
+
+	// Let the workers stop when we are done
+	defer c.queue.ShutDown()
+	logger := klog.FromContext(ctx)
+	logger.Info("Starting ${resources.value[0].kind.toLowerCase()} controller")
+	defer logger.Info("Stopping ${resources.value[0].kind.toLowerCase()} controller")
+
+	// Wait for all involved caches to be synced, before processing items from the queue is started
+	if !cache.WaitForCacheSync(ctx.Done()${resources.value.map((item) => `, c.${item.kind.toLowerCase() || "unknowntype"}Synced`)}) {
+		utilruntime.HandleError(ErrSyncTimeout)
+		return
+	}
+
+	for i := 0; i < workers; i++ {
+		go wait.UntilWithContext(ctx, c.runWorker, time.Second)
+	}
+
+	<-ctx.Done()
+}
+
+func (c *${controllerName.value}) runWorker(ctx context.Context) {
+	for c.processNextWorkItem(ctx) {
+	}
+}
+
+func (c *${controllerName.value}) processNextItem(ctx context.Context) bool {
+	// Wait until there is a new item in the working queue
+	key, quit := c.queue.Get()
+	if quit {
+		return false
+	}
+	// Tell the queue that we are done with processing this key. This unblocks the key for other workers
+	// This allows safe parallel processing because two pods with the same key are never processed in
+	// parallel.
+	defer c.queue.Done(key)
+
+	// Invoke the method containing the business logic
+	err := c.sync(ctx, key.(string))
+	// Handle the error if something went wrong during the execution of the business logic
+	c.handleErr(ctx, err, key)
+
+	return true
+}
+
+func (c *${controllerName.value}) sync(ctx context.Context, key string) error {
+	logger := klog.FromContext(ctx)
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		logger.Error(err, "Failed to split meta namespace cache key", "cacheKey", key)
+		return err
+	}
+	return c.doSync(ctx, namespace, name)
+}
+
+func (c *${controllerName.value}) handleErr(ctx context.Context, err error, key interface{}) {
+	if err == nil {
+		c.queue.Forget(key)
+		return
+	}
+
+	logger := klog.FromContext(ctx)
+
+	if c.queue.NumRequeues(key) < c.retryOnError {
+		logger.Error(err, "Failed to sync object", "cacheKey", key)
+		c.queue.AddRateLimited(key)
+		return
+	}
+
+	c.queue.Forget(key)
+	utilruntime.HandleError(err)
+	logger.Info("Dropping object out of the queue", "cacheKey", key)
+}
+`;
 });
 
 const files: string[] = ["go.mod", "main.go", "controller.go", "custom.go"];
-const currentFile = ref<string>("main.go");
+const currentFile = ref<string>("controller.go");
 const filesMap = {
   "go.mod": _goMod,
   "main.go": _main,
