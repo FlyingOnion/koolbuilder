@@ -488,7 +488,7 @@ function download() {
                 index === 0 ? "Main Resource" : "Resource " + index.toString()
               }}
             </span>
-            <span flex-1 flex justify-end>
+            <span v-if="index > 0" flex-1 flex justify-end>
               <button
                 type="button"
                 @click="deleteResource(index)"

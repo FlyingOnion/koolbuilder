@@ -20,6 +20,19 @@ export interface ResourceCodeGen extends Resource {
 
 const versionRegex = /^v\d+((alpha|beta|rc)\d+)?$/;
 
+export function getVersionFromPackage(pkg: string | undefined): string {
+  if (typeof pkg === "undefined") {
+    return "";
+  }
+  const ss = pkg.split("/");
+  for (let i = ss.length - 1; i >= 0; i--) {
+    if (ss[i].match(versionRegex)) {
+      return ss[i];
+    }
+  }
+  return "";
+}
+
 export function getAlias(pkg: string | undefined): string {
   if (typeof pkg === "undefined") {
     return "undefined";
@@ -77,4 +90,3 @@ const groupVersionMap: MapStringStringArray = {
 export function group2Versions(group: string | undefined): string[] {
   return typeof group === "undefined" ? [] : groupVersionMap[group];
 }
-
