@@ -39,6 +39,14 @@ export function getAlias(pkg: string | undefined): string {
     : s[s.length - 1];
 }
 
+export function lowerKind(kind: string): string {
+  return kind.toLowerCase() || "unknowntype";
+}
+
+export function kindDeepCopyGen(kind: string): string {
+  return lowerKind(kind) + "_gen.deepcopy.go";
+}
+
 // const kindGroupMap: MapStringString = {
 //   Deployment: "apps",
 //   StatefulSet: "apps",

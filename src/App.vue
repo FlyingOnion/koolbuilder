@@ -8,6 +8,8 @@ import {
   getAlias,
   getVersionFromPackage,
   group2Versions,
+  lowerKind,
+  kindDeepCopyGen,
 } from "./helper";
 
 const defaultName = "KoolController";
@@ -138,8 +140,6 @@ const imports = computed<string[]>(() => {
 
 function addResource() {
   resources.value.push({ kind: "", package: "", isCustomResource: true });
-  console.log(resources.value);
-  console.log(imports.value);
 }
 
 function deleteResource(index: number) {
@@ -249,7 +249,7 @@ func main() {
 ${resources.value
   .map(
     (item) =>
-      `\t${item.kind.toLowerCase() || "unknowntype"}Informer := kool.New${
+      `\t${lowerKind(item.kind)}Informer := kool.New${
         item.isNamespaced ? "Namespaced" : ""
       }Informer[${goType(item)}](client, 30*time.Second)`
   )
@@ -257,7 +257,7 @@ ${resources.value
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	controller := New${controllerName.value}(${resources.value.map(
-    (item) => `${item.kind.toLowerCase() || "unknowntype"}Informer, `
+    (item) => `${lowerKind(item.kind)}Informer, `
   )}queue, ${retry.value})
 
 	sigC := make(chan os.Signal, 1)
@@ -302,7 +302,7 @@ type ${controllerName.value} struct {
 ${resources.value
   .map(
     (item) =>
-      `\t${item.kind.toLowerCase() || "unknowntype"}Lister kool.${
+      `\t${lowerKind(item.kind)}Lister kool.${
         item.isNamespaced ? "Namespaced" : ""
       }Lister[${goType(item)}]`
   )
@@ -311,7 +311,7 @@ ${resources.value
 ${resources.value
   .map(
     (item) =>
-      `\t${item.kind.toLowerCase() || "unknowntype"}Synced cache.InformerSynced`
+      `\t${lowerKind(item.kind)}Synced cache.InformerSynced`
   )
   .join("\n")}
 
@@ -323,7 +323,7 @@ func New${controllerName.value}(
 ${resources.value
   .map(
     (item) =>
-      `\t${item.kind.toLowerCase() || "unknowntype"}Informer kool.${
+      `\t${lowerKind(item.kind)}Informer kool.${
         item.isNamespaced ? "Namespaced" : ""
       }Informer[${goType(item)}],`
   )
@@ -337,11 +337,11 @@ ${resources.value
   .map(
     (item) =>
       `\t${
-        item.kind.toLowerCase() || "unknowntype"
+        lowerKind(item.kind)
       }Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-\t\tAddFunc: c.Add${item.kind},
-\t\tUpdateFunc: c.Update${item.kind},
-\t\tDeleteFunc: c.Delete${item.kind},
+\t\tAddFunc: c.Add${item.kind || "UnknownType"},
+\t\tUpdateFunc: c.Update${item.kind || "UnknownType"},
+\t\tDeleteFunc: c.Delete${item.kind || "UnknownType"},
 \t})`
   )
   .join("\n")}
@@ -349,11 +349,11 @@ ${resources.value
 ${resources.value
   .map(
     (item) =>
-      `\tc.${item.kind.toLowerCase() || "unknowntype"}Lister = ${
-        item.kind.toLowerCase() || "unknowntype"
+      `\tc.${lowerKind(item.kind)}Lister = ${
+        lowerKind(item.kind)
       }Informer.Lister()` +
-      `\n\tc.${item.kind.toLowerCase() || "unknowntype"}Synced = ${
-        item.kind.toLowerCase() || "unknowntype"
+      `\n\tc.${lowerKind(item.kind)}Synced = ${
+        lowerKind(item.kind)
       }Informer.Informer().HasSynced`
   )
   .join("\n")}
@@ -366,12 +366,12 @@ func (c *${controllerName.value}) Run(ctx context.Context, workers int) {
 	// Let the workers stop when we are done
 	defer c.queue.ShutDown()
 	logger := klog.FromContext(ctx)
-	logger.Info("Starting ${resources.value[0].kind.toLowerCase()} controller")
-	defer logger.Info("Stopping ${resources.value[0].kind.toLowerCase()} controller")
+	logger.Info("Starting ${lowerKind(resources.value[0].kind)} controller")
+	defer logger.Info("Stopping ${lowerKind(resources.value[0].kind)} controller")
 
 	// Wait for all involved caches to be synced, before processing items from the queue is started
 	if !cache.WaitForCacheSync(ctx.Done()${resources.value.map(
-    (item) => `, c.${item.kind.toLowerCase() || "unknowntype"}Synced`
+    (item) => `, c.${lowerKind(item.kind)}Synced`
   )}) {
 		utilruntime.HandleError(ErrSyncTimeout)
 		return
@@ -464,9 +464,9 @@ func (c *${controllerName.value}) doSync(ctx context.Context, namespace, name st
 
 	// switch following code between global and namespaced lister
 	//  // global lister
-	//  c.${resources.value[0].kind.toLowerCase()}Lister.Namespaced(namespace).Get(name)
+	//  c.${lowerKind(resources.value[0].kind)}Lister.Namespaced(namespace).Get(name)
 	//  // namespaced lister
-	//  c.${resources.value[0].kind.toLowerCase()}Lister.Get(name)
+	//  c.${lowerKind(resources.value[0].kind)}Lister.Get(name)
 
 	return nil
 }
@@ -501,9 +501,9 @@ ${resources.value.slice(1).map(
   (item) =>
     `
 func (c *${controllerName.value}) Add${item.kind || "UnknownType"}(obj any) {
-	${item.kind.toLowerCase()} := obj.(*${goType(item)})
-	// TODO: do something with ${item.kind.toLowerCase()}
-	_ = ${item.kind.toLowerCase()}
+	${lowerKind(item.kind)} := obj.(*${goType(item)})
+	// TODO: do something with ${lowerKind(item.kind)}
+	_ = ${lowerKind(item.kind)}
 }
 
 func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, newObj any) {
@@ -514,7 +514,7 @@ func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, ne
 }
 
 func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
-	${item.kind.toLowerCase()}, ok := obj.(*${goType(item)})
+	${lowerKind(item.kind)}, ok := obj.(*${goType(item)})
 	if !ok {
 		// error handling
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
@@ -522,7 +522,7 @@ func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
 			runtime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
-		${item.kind.toLowerCase()}, ok = tombstone.Obj.(*${goType(item)})
+		${lowerKind(item.kind)}, ok = tombstone.Obj.(*${goType(item)})
 		if !ok {
 			runtime.HandleError(fmt.Errorf("tombstone contained object that is not a bar %#v", obj))
 			return
@@ -548,7 +548,6 @@ const code = computed<string>(() => {
 
 function changeFile(file: string) {
   currentFile.value = file;
-  console.log(file);
 }
 
 function goType(rs: Resource): string {
@@ -558,10 +557,6 @@ function goType(rs: Resource): string {
       (rs.package?.length === 0 || rs.package === goModule.value)
     ? rs.kind
     : getAlias(rs.package) + "." + rs.kind;
-}
-
-function kindDeepCopyGen(kind: string): string {
-  return kind.toLowerCase() + "_gen.deepcopy.go";
 }
 
 function download() {
