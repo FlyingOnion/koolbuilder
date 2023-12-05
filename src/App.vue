@@ -339,29 +339,24 @@ ${resources.value
       `\t${
         item.kind.toLowerCase() || "unknowntype"
       }Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-\t\tAddFunc: ${
-        item.customHandlers?.findIndex((i) => i === "Add")
-          ? "c.Add${item.kind}"
-          : "nil"
-      },
-\t\tUpdateFunc: ${
-        item.customHandlers?.findIndex((i) => i === "Update")
-          ? "c.Update${item.kind}"
-          : "nil"
-      },
-\t\tDeleteFunc: ${
-        item.customHandlers?.findIndex((i) => i === "Delete")
-          ? "c.Delete${item.kind}"
-          : "nil"
-      },
+\t\tAddFunc: c.Add${item.kind},
+\t\tUpdateFunc: c.Update${item.kind},
+\t\tDeleteFunc: c.Delete${item.kind},
 \t})`
   )
   .join("\n")}
-  
-${resources.value.map((item) =>
-  `\tc.${item.kind.toLowerCase() || "unknowntype"}Lister = ${item.kind.toLowerCase() || "unknowntype"}Informer.Lister()`+
-  `\n\tc.${item.kind.toLowerCase() || "unknowntype"}Synced = ${item.kind.toLowerCase() || "unknowntype"}Informer.Informer().HasSynced`
-).join("\n")}
+
+${resources.value
+  .map(
+    (item) =>
+      `\tc.${item.kind.toLowerCase() || "unknowntype"}Lister = ${
+        item.kind.toLowerCase() || "unknowntype"
+      }Informer.Lister()` +
+      `\n\tc.${item.kind.toLowerCase() || "unknowntype"}Synced = ${
+        item.kind.toLowerCase() || "unknowntype"
+      }Informer.Informer().HasSynced`
+  )
+  .join("\n")}
 	return c
 }
 
@@ -375,7 +370,9 @@ func (c *${controllerName.value}) Run(ctx context.Context, workers int) {
 	defer logger.Info("Stopping ${resources.value[0].kind.toLowerCase()} controller")
 
 	// Wait for all involved caches to be synced, before processing items from the queue is started
-	if !cache.WaitForCacheSync(ctx.Done()${resources.value.map((item) => `, c.${item.kind.toLowerCase() || "unknowntype"}Synced`)}) {
+	if !cache.WaitForCacheSync(ctx.Done()${resources.value.map(
+    (item) => `, c.${item.kind.toLowerCase() || "unknowntype"}Synced`
+  )}) {
 		utilruntime.HandleError(ErrSyncTimeout)
 		return
 	}
@@ -441,13 +438,108 @@ func (c *${controllerName.value}) handleErr(ctx context.Context, err error, key 
 }
 `;
 });
+const _custom = computed<string>(() => {
+  return `package main
+
+// This file contains all customized functions.
+// Regeneration will not cover the codes.
+// Feel free to modify.
+
+import (
+	"context"
+	"fmt"
+
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/tools/cache"
+	${imports.value.map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
+)
+
+var _ *${goType(resources.value[0])} = nil
+
+func (c *${controllerName.value}) doSync(ctx context.Context, namespace, name string) error {
+	// TODO: modify this function
+
+	// ATTENTION: this function may cause error if you regenerate the code with namespace change
+	// from ""(global) to non-empty(namespaced) or vice versa
+
+	// switch following code between global and namespaced lister
+	//  // global lister
+	//  c.${resources.value[0].kind.toLowerCase()}Lister.Namespaced(namespace).Get(name)
+	//  // namespaced lister
+	//  c.${resources.value[0].kind.toLowerCase()}Lister.Get(name)
+
+	return nil
+}
+
+func (c *${controllerName.value}) Add${resources.value[0].kind || "UnknownType"}(obj any) {
+	key, err := cache.MetaNamespaceKeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		return
+	}
+	c.queue.AddRateLimited(key)
+}
+
+func (c *${controllerName.value}) Update${resources.value[0].kind || "UnknownType"}(oldObj, newObj any) {
+	key, err := cache.MetaNamespaceKeyFunc(curObj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", curObj, err))
+		return
+	}
+	c.queue.AddRateLimited(key)
+}
+
+func (c *${controllerName.value}) Delete${resources.value[0].kind || "UnknownType"}(obj any) {
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", obj, err))
+		return
+	}
+	c.queue.AddRateLimited(key)
+}
+${resources.value.slice(1).map(
+  (item) =>
+    `
+func (c *${controllerName.value}) Add${item.kind || "UnknownType"}(obj any) {
+	${item.kind.toLowerCase()} := obj.(*${goType(item)})
+	// TODO: do something with ${item.kind.toLowerCase()}
+	_ = ${item.kind.toLowerCase()}
+}
+
+func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, newObj any) {
+	old := oldObj.(*${goType(item)})
+	cur := newObj.(*${goType(item)})
+	// TODO: do something with old and cur
+	_, _ = old, cur
+}
+
+func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
+	${item.kind.toLowerCase()}, ok := obj.(*${goType(item)})
+	if !ok {
+		// error handling
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			runtime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+			return
+		}
+		${item.kind.toLowerCase()}, ok = tombstone.Obj.(*${goType(item)})
+		if !ok {
+			runtime.HandleError(fmt.Errorf("tombstone contained object that is not a bar %#v", obj))
+			return
+		}
+	}
+}`
+)}
+`;
+});
 
 const files: string[] = ["go.mod", "main.go", "controller.go", "custom.go"];
-const currentFile = ref<string>("controller.go");
+const currentFile = ref<string>("main.go");
 const filesMap = {
   "go.mod": _goMod,
   "main.go": _main,
   "controller.go": _controller,
+  "custom.go": _custom,
 };
 const code = computed<string>(() => {
   const r = filesMap[currentFile.value];
@@ -460,11 +552,12 @@ function changeFile(file: string) {
 }
 
 function goType(rs: Resource): string {
-  const kind = rs.kind.length > 0 ? rs.kind : "UnknownType";
-  return rs.isCustomResource &&
-    (rs.package?.length === 0 || rs.package === goModule.value)
-    ? kind
-    : getAlias(rs.package) + "." + kind;
+  return rs.kind.length === 0
+    ? "UnknownType"
+    : rs.isCustomResource &&
+      (rs.package?.length === 0 || rs.package === goModule.value)
+    ? rs.kind
+    : getAlias(rs.package) + "." + rs.kind;
 }
 
 function kindDeepCopyGen(kind: string): string {
@@ -489,7 +582,7 @@ function download() {
 <template>
   <div flex flex-wrap gap-4 p-4>
     <div flex flex-col gap-1 min-w-100>
-      <p class="text-2xl font-semibold leading-7 text-gray-900">Kool Builder</p>
+      <p class="text-2xl font-semibold leading-7 text-gray-900">Koolbuilder</p>
       <p class="text-base leading-6 text-gray-600">
         Build your kubernetes operator easily
       </p>

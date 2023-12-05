@@ -4,18 +4,8 @@ export interface Resource {
   version?: string;
   kind: string;
   package?: string;
-  customHandlers?: string[];
   genDeepCopy?: boolean;
   isNamespaced?: boolean;
-}
-
-export interface ResourceCodeGen extends Resource {
-  customAdd: boolean;
-  customUpdate: boolean;
-  customDelete: boolean;
-  lowerKind: string;
-  goType: string;
-  shouldRegister: boolean;
 }
 
 const versionRegex = /^v\d+((alpha|beta|rc)\d+)?$/;
