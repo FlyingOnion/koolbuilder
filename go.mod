@@ -2,10 +2,8 @@ module github.com/FlyingOnion/koolbuilder
 
 go 1.21.1
 
-replace github.com/FlyingOnion/pkg => ../pkg
-
 require (
-	github.com/FlyingOnion/pkg v0.0.0-00010101000000-000000000000
+	github.com/FlyingOnion/pkg v0.1.0
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/spf13/pflag v1.0.5
 	gopkg.in/yaml.v3 v3.0.1

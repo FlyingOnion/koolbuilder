@@ -12,6 +12,7 @@ import {
   kindDeepCopyGen,
 } from "./helper";
 
+const koolVersion = "0.1.0";
 const defaultName = "KoolController";
 const goVersionOptions: string[] = [
   "1.21.4",
@@ -183,7 +184,7 @@ const _goMod = computed<string>(() => {
 go ${goVersion.value}
 
 require (
-	github.com/FlyingOnion/kool v0.0.0-20231117094958-b286212bb91c
+	github.com/FlyingOnion/kool v${koolVersion}
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/spf13/pflag v1.0.5
 	k8s.io/apimachinery v${k8sApiVersion.value}
@@ -930,7 +931,7 @@ function download() {
       </div>
       <div>
         <div flex flex-col gap-1>
-          <ul>
+          <ul flex gap-1>
             <li v-for="f in files" :key="f">
               <a
                 text-center
@@ -941,6 +942,7 @@ function download() {
                 text-sm
                 cursor-pointer
                 hover:bg-gray-100
+                :class="{ 'bg-gray-300': f === currentFile }"
                 role="tab"
                 :aria-selected="f === currentFile"
                 @click="changeFile(f)"
