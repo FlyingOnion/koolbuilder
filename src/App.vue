@@ -701,8 +701,8 @@ function download() {
           rounded
           px-2
         />
-        <!-- is namespaced -->
-        <label :for="'namespaced-' + index.toString()">Namespaced</label>
+        <!-- scope -->
+        <label :for="'namespaced-' + index.toString()">Scope</label>
         <select
           :id="'namespaced-' + index.toString()"
           v-model="item.isNamespaced"
@@ -712,8 +712,8 @@ function download() {
           px-1
           disabled-bg-light
         >
-          <option :value="true">Yes (Namespaced)</option>
-          <option :value="false">No (Global)</option>
+          <option :value="true">Namespaced</option>
+          <option :value="false">Cluster</option>
         </select>
       </template>
       <button @click="addResource" flex items-center justify-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
