@@ -271,7 +271,9 @@ func main() {
 	client := mustGetOrLogFatal(rest.RESTClientFor(config))
 
 ${resources.value
-  .map((item) => `\t${lowerKind(item.kind)}Informer := kool.New${item.isNamespaced ? "Namespaced" : ""}Informer[${goType(item)}](client, 30*time.Second)`)
+  .map((item) => `\t${lowerKind(item.kind)}Informer := kool.New${
+    item.isNamespaced && namespace.value.length > 0 ? "Namespaced" : ""
+  }Informer[${goType(item)}](client, ${item.isNamespaced && namespace.value.length > 0 ? `"${namespace.value}", ` : ""}30*time.Second)`)
   .join("\n")}
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -320,7 +322,7 @@ var (
 
 type ${controllerName.value} struct {
 ${resources.value
-  .map((item) => `\t${lowerKind(item.kind)}Lister kool.${item.isNamespaced ? "Namespaced" : ""}Lister[${goType(item)}]`)
+  .map((item) => `\t${lowerKind(item.kind)}Lister kool.${item.isNamespaced && namespace.value.length > 0 ? "Namespaced" : ""}Lister[${goType(item)}]`)
   .join("\n")}
 
 ${resources.value
