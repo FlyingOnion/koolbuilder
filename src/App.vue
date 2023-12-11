@@ -12,6 +12,7 @@ const k8sApiVersionOptions: string[] = ["0.28.3", "0.28.2"];
 
 const builtinResourcesOptions: Resource[] = [
   {
+    isCustomResource: false,
     kind: "Deployment",
     group: "apps",
     version: "v1",
@@ -19,6 +20,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "StatefulSet",
     group: "apps",
     version: "v1",
@@ -26,6 +28,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "ReplicaSet",
     group: "apps",
     version: "v1",
@@ -33,6 +36,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "DaemonSet",
     group: "apps",
     version: "v1",
@@ -41,6 +45,7 @@ const builtinResourcesOptions: Resource[] = [
   },
 
   {
+    isCustomResource: false,
     kind: "Job",
     group: "batch",
     version: "v1",
@@ -48,6 +53,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "CronJob",
     group: "batch",
     version: "v1",
@@ -56,6 +62,7 @@ const builtinResourcesOptions: Resource[] = [
   },
 
   {
+    isCustomResource: false,
     kind: "Binding",
     group: "core",
     version: "v1",
@@ -63,6 +70,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "Pod",
     group: "core",
     version: "v1",
@@ -70,6 +78,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "PodTemplate",
     group: "core",
     version: "v1",
@@ -77,6 +86,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "Endpoints",
     group: "core",
     version: "v1",
@@ -84,6 +94,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "ReplicationController",
     group: "core",
     version: "v1",
@@ -91,6 +102,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: true,
   },
   {
+    isCustomResource: false,
     kind: "Node",
     group: "core",
     version: "v1",
@@ -98,6 +110,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: false,
   },
   {
+    isCustomResource: false,
     kind: "Namespace",
     group: "core",
     version: "v1",
@@ -105,6 +118,7 @@ const builtinResourcesOptions: Resource[] = [
     isNamespaced: false,
   },
   {
+    isCustomResource: false,
     kind: "Service",
     group: "core",
     version: "v1",
@@ -144,7 +158,12 @@ const imports = computed<string[]>(() => {
 });
 
 function addResource() {
-  resources.value.push({ kind: "", package: "", isCustomResource: true });
+  resources.value.push({
+    isCustomResource: true,
+    kind: "",
+    package: "",
+    isNamespaced: true,
+  });
 }
 
 function deleteResource(index: number) {
@@ -555,280 +574,199 @@ function download() {
 </script>
 
 <template>
-  <div flex flex-wrap gap-4 p-4>
-    <div flex flex-col gap-1 min-w-100>
-      <p class="text-2xl font-semibold leading-7 text-gray-900">Koolbuilder</p>
-      <p class="text-base leading-6 text-gray-600">Build your kubernetes operator easily</p>
+  <div grid grid-cols-3 gap-4 p-4>
+    <div col-span-3 lg:col-span-1 flex flex-col gap-1>
+      <p text-2xl font-semibold leading-7 text-gray-900>Koolbuilder</p>
+      <p text-base leading-6 text-gray-600>Build your kubernetes operator easily</p>
       <p>(WIP)</p>
-      <p class="text-xl font-semibold leading-10 text-gray-600">Basic</p>
-      <div flex flex-col gap-1>
-        <!-- controller name -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="controller" flex-1>Controller Name</label>
-          </span>
-          <span flex-1 flex>
-            <input id="controller" v-model="controllerName" flex-grow border rounded px-2 />
-          </span>
-        </div>
-        <!-- custom go module -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="custom-go-module" flex-1>Custom Go Module</label>
-          </span>
-          <span flex-1 flex>
-            <input id="custom-go-module" type="checkbox" v-model="customGoModuleName" @change="changeCustomGoModuleNameFlag" />
-            <label for="custom-go-module" flex-grow></label>
-          </span>
-        </div>
-        <!-- go module -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="go-module" flex-1>Go Module</label>
-          </span>
-          <span flex-1 flex>
-            <input v-if="customGoModuleName" id="go-module" v-model="customGoModule" flex-grow border rounded px-2 />
-            <input v-else id="go-module" v-model="lowerControllerName" disabled flex-grow border rounded px-2 disabled-bg-light />
-          </span>
-        </div>
-        <!-- go version -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="go-version" flex-1>Go Version</label>
-          </span>
-          <span flex-1>
-            <select id="go-version" v-model="goVersion" min-w-20 border rounded>
-              <option v-for="item in goVersionOptions" :key="item" :value="item">
-                {{ item }}
-              </option>
-            </select>
-          </span>
-        </div>
-        <!-- k8s api version -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="k8s-api-version" flex-1>Kubernetes API Version</label>
-          </span>
-          <span flex-1>
-            <select id="k8s-api-version" v-model="k8sApiVersion" min-w-20 border rounded>
-              <option v-for="item in k8sApiVersionOptions" :key="item" :value="item">
-                {{ item }}
-              </option>
-            </select>
-          </span>
-        </div>
-        <!-- namespace -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="namespace" flex-1>Namespace</label>
-          </span>
-          <span flex-1 flex>
-            <input id="namespace" v-model="namespace" flex-grow border rounded px-2 />
-          </span>
-        </div>
-        <!-- retry -->
-        <div flex>
-          <span flex-1 flex max-w-80>
-            <label for="retry" flex-1>Retry</label>
-          </span>
-          <span flex-1 flex>
-            <input id="retry" type="number" v-model="retry" flex-grow border rounded px-2 />
-          </span>
-        </div>
-      </div>
+      <p text-xl font-semibold leading-10 text-gray-600>Basic</p>
 
-      <p class="text-xl font-semibold leading-10 text-gray-600">Resources</p>
-      <div flex flex-col gap-1>
-        <template v-for="(item, index) in resources" :key="index">
-          <!-- title and delete button -->
-          <div flex>
-            <span flex-1 max-w-80 text-lg font-400 leading-6 text-gray-600 select-none>
-              {{ index === 0 ? "Main Resource" : "Resource " + index.toString() }}
-            </span>
-            <span v-if="index > 0" flex-1 flex justify-end>
-              <button type="button" @click="deleteResource(index)" flex items-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
-                Delete
-                <span i-tabler-trash></span>
-              </button>
-            </span>
-          </div>
-          <!-- custom resource -->
-          <div flex>
-            <span flex-1 max-w-80>
-              <label :for="'custom-' + index.toString()">Custom Resource</label>
-            </span>
-            <span flex-1 flex>
-              <input :id="'custom-' + index.toString()" type="checkbox" v-model="item.isCustomResource" @change="resetResource(index)" />
-              <label :for="'custom-' + index.toString()" flex-grow></label>
-            </span>
-          </div>
-          <!-- group -->
-          <div flex>
-            <span flex-1 max-w-80>
-              <label :for="'group-' + index.toString()">Group</label>
-            </span>
-            <span flex-1 flex>
-              <input
-                :id="'group-' + index.toString()"
-                v-model="item.group"
-                :disabled="!item.isCustomResource"
-                flex-grow
-                border
-                rounded
-                px-2
-                disabled-bg-light
-              />
-            </span>
-          </div>
-          <!-- kind -->
-          <div flex>
-            <span flex-1 max-w-80>
-              <label :for="'kind-' + index.toString()">Kind</label>
-            </span>
-            <span flex-1 flex>
-              <input v-if="item.isCustomResource" :id="'kind-' + index.toString()" v-model="item.kind" flex-grow border rounded px-2 />
-              <select
-                v-else
-                :id="'kind-' + index.toString()"
-                v-model="item.kind"
-                @change="changeKind(index)"
-                flex-grow
-                min-w-20
-                border
-                rounded
-                px-1
-              >
-                <option v-for="item in builtinResourcesOptions" :key="item.kind" :value="item.kind">
-                  {{ item.kind }}
-                </option>
-              </select>
-            </span>
-          </div>
-          <!-- version -->
-          <div flex>
-            <span flex-1 max-w-80>
-              <label :for="'version-' + index.toString()">Version</label>
-            </span>
-            <span v-if="item.isCustomResource" flex-1 flex>
-              <input :id="'version-' + index.toString()" v-model="item.version" list="versionList" flex-grow border rounded px-2 />
-              <datalist id="versionList">
-                <option>v1</option>
-                <option>v1alpha1</option>
-                <option>v1alpha2</option>
-                <option>v1beta1</option>
-                <option>v1beta2</option>
-                <option>v2</option>
-                <option>v2alpha1</option>
-                <option>v2alpha2</option>
-                <option>v2beta1</option>
-                <option>v2beta2</option>
-              </datalist>
-            </span>
-            <span v-else flex-1 flex>
-              <select
-                :id="'version-' + index.toString()"
-                v-model="item.version"
-                :disabled="item.kind.length === 0"
-                flex-grow
-                min-w-20
-                border
-                rounded
-                px-1
-                disabled-bg-light
-              >
-                <option v-for="version in group2Versions(item.group)" :key="version" :value="version">
-                  {{ version }}
-                </option>
-              </select>
-            </span>
-          </div>
-          <!-- package -->
-          <div v-show="item.isCustomResource" flex>
-            <span flex-1 max-w-80>
-              <label :for="'package-' + index.toString()">Package</label>
-            </span>
-            <span flex-1 flex>
-              <input
-                :id="'package-' + index.toString()"
-                v-model="item.package"
-                @change="tryResetResourceVersion(index)"
-                flex-grow
-                border
-                rounded
-                px-2
-              />
-            </span>
-          </div>
-          <!-- namespaced -->
-          <div flex>
-            <span flex-1 max-w-80>
-              <label :for="'namespaced-' + index.toString()">Namespaced</label>
-            </span>
-            <span flex-1 flex>
-              <input
-                :id="'namespaced-' + index.toString()"
-                type="checkbox"
-                v-model="item.isNamespaced"
-                :disabled="!item.isCustomResource"
-              />
-              <label :for="'namespaced-' + index.toString()" flex-grow></label>
-            </span>
-          </div>
+      <!-- controller name -->
+      <label for="controller">Controller Name</label>
+      <input id="controller" v-model="controllerName" border rounded px-2 />
+      <!-- go module -->
+      <label for="custom-go-module">Go Module Name</label>
+      <select id="custom-go-module" v-model="customGoModuleName" @change="changeCustomGoModuleNameFlag" border rounded px-1>
+        <option :value="false">Use lowercase controller name</option>
+        <option :value="true">Use custom name</option>
+      </select>
+      <input v-if="customGoModuleName" id="go-module" v-model="customGoModule" border rounded px-2 />
+      <input v-else id="go-module" v-model="lowerControllerName" disabled border rounded px-2 disabled-bg-light />
+      <!-- go version -->
+      <label for="go-version">Go Version</label>
+      <select id="go-version" v-model="goVersion" border rounded px-1>
+        <option v-for="item in goVersionOptions" :key="item" :value="item">{{ item }}</option>
+      </select>
+      <!-- k8s api version -->
+      <label for="k8s-api-version">Kubernetes API Version</label>
+      <select id="k8s-api-version" v-model="k8sApiVersion" border rounded px-1>
+        <option v-for="item in k8sApiVersionOptions" :key="item" :value="item">{{ item }}</option>
+      </select>
+      <!-- namespace -->
+      <label for="namespace">Namespace</label>
+      <input id="namespace" v-model="namespace" border rounded px-2 />
+      <!-- retry -->
+      <label for="retry">Retry</label>
+      <input id="retry" type="number" v-model="retry" border rounded px-2 />
+
+      <p text-xl font-semibold leading-10 text-gray-600>Resources</p>
+      <template v-for="(item, index) in resources" :key="index">
+        <!-- title and delete button -->
+        <div flex>
+          <p flex-grow text-lg font-400 leading-8 text-gray-600 select-none>
+            {{ index === 0 ? "Main Resource" : "Resource " + index.toString() }}
+          </p>
+          <button
+            type="button"
+            v-if="index > 0"
+            @click="deleteResource(index)"
+            flex
+            items-center
+            rounded
+            px-1
+            py-1
+            font-sans
+            text-sm
+            hover:bg-gray-100
+          >
+            Delete
+            <span i-tabler-trash></span>
+          </button>
+        </div>
+
+        <!-- resource type -->
+        <label :for="'custom-' + index.toString()">Official / Custom</label>
+        <select :id="'custom-' + index.toString()" v-model="item.isCustomResource" @change="resetResource(index)" border rounded px-1>
+          <option :value="false">Official</option>
+          <option :value="true">Custom</option>
+        </select>
+        <!-- kind -->
+        <label :for="'kind-' + index.toString()">Kind</label>
+        <input v-if="item.isCustomResource" :id="'kind-' + index.toString()" v-model="item.kind" border rounded px-2 />
+        <select v-else :id="'kind-' + index.toString()" v-model="item.kind" @change="changeKind(index)" border rounded px-1>
+          <option v-for="item in builtinResourcesOptions" :key="item.kind" :value="item.kind">
+            {{ item.kind }}
+          </option>
+        </select>
+        <!-- group -->
+        <label :for="'group-' + index.toString()">Group</label>
+        <input
+          :id="'group-' + index.toString()"
+          v-model="item.group"
+          :disabled="!item.isCustomResource"
+          border
+          rounded
+          px-2
+          disabled-bg-light
+        />
+        <!-- version -->
+        <label :for="'version-' + index.toString()">Version</label>
+        <template v-if="item.isCustomResource">
+          <input :id="'version-' + index.toString()" v-model="item.version" list="versionList" border rounded px-2 />
+          <datalist id="versionList">
+            <option>v1</option>
+            <option>v1alpha1</option>
+            <option>v1alpha2</option>
+            <option>v1beta1</option>
+            <option>v1beta2</option>
+            <option>v2</option>
+            <option>v2alpha1</option>
+            <option>v2alpha2</option>
+            <option>v2beta1</option>
+            <option>v2beta2</option>
+          </datalist>
         </template>
-        <button @click="addResource" flex items-center justify-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
-          Add
-          <span i-tabler-circle-plus></span>
-        </button>
-      </div>
+        <select
+          v-else
+          :id="'version-' + index.toString()"
+          v-model="item.version"
+          :disabled="item.kind.length === 0"
+          border
+          rounded
+          px-1
+          disabled-bg-light
+        >
+          <option v-for="version in group2Versions(item.group)" :key="version" :value="version">{{ version }}</option>
+        </select>
+        <!-- package -->
+        <label v-show="item.isCustomResource" :for="'package-' + index.toString()">Package</label>
+        <input
+          v-show="item.isCustomResource"
+          :id="'package-' + index.toString()"
+          v-model="item.package"
+          @change="tryResetResourceVersion(index)"
+          border
+          rounded
+          px-2
+        />
+        <!-- is namespaced -->
+        <label :for="'namespaced-' + index.toString()">Namespaced</label>
+        <select
+          :id="'namespaced-' + index.toString()"
+          v-model="item.isNamespaced"
+          :disabled="!item.isCustomResource"
+          border
+          rounded
+          px-1
+          disabled-bg-light
+        >
+          <option :value="true">Yes (Namespaced)</option>
+          <option :value="false">No (Global)</option>
+        </select>
+      </template>
+      <button @click="addResource" flex items-center justify-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
+        Add
+        <span i-tabler-circle-plus></span>
+      </button>
     </div>
-    <div flex-grow flex flex-col gap-1 min-w-128>
+
+    <div col-span-3 lg:col-span-2 flex flex-col gap-1>
       <div flex>
-        <p flex-1 text-xl font-semibold leading-10 text-gray-600>Output</p>
+        <p text-xl font-semibold leading-10 text-gray-600 flex-grow>Output</p>
         <button @click="download" flex items-center justify-center rounded px-2 py-2 font-semibold text-sm text-gray-600 hover:bg-gray-100>
           Download Zip
           <span i-tabler-download></span>
         </button>
       </div>
-      <div>
-        <div flex flex-col gap-1>
-          <ul flex gap-1>
-            <li v-for="f in files" :key="f">
-              <a
-                text-center
-                rounded
-                px-1
-                py-1
-                font-sans
-                text-sm
-                cursor-pointer
-                hover:bg-gray-100
-                :class="{ 'bg-gray-300': f === currentFile }"
-                role="tab"
-                :aria-selected="f === currentFile"
-                @click="changeFile(f)"
-                >{{ f }}</a
-              >
-            </li>
-            <li v-for="r in resources.filter((r) => r.genDeepCopy)" :key="r.kind">
-              <a
-                text-center
-                rounded
-                px-1
-                py-1
-                font-sans
-                text-sm
-                cursor-pointer
-                hover:bg-gray-100
-                role="tab"
-                :aria-selected="kindDeepCopyGen(r.kind) === currentFile"
-                @click="changeFile(kindDeepCopyGen(r.kind))"
-                >{{ kindDeepCopyGen(r.kind) }}</a
-              >
-            </li>
-          </ul>
-          <code-mirror :code="code"></code-mirror>
-        </div>
-      </div>
+
+      <ul flex gap-1>
+        <li v-for="f in files" :key="f">
+          <a
+            text-center
+            rounded
+            px-1
+            py-1
+            font-sans
+            text-sm
+            cursor-pointer
+            hover:bg-gray-100
+            :class="{ 'bg-gray-300': f === currentFile }"
+            role="tab"
+            :aria-selected="f === currentFile"
+            @click="changeFile(f)"
+            >{{ f }}</a
+          >
+        </li>
+        <li v-for="r in resources.filter((r) => r.genDeepCopy)" :key="r.kind">
+          <a
+            text-center
+            rounded
+            px-1
+            py-1
+            font-sans
+            text-sm
+            cursor-pointer
+            hover:bg-gray-100
+            role="tab"
+            :aria-selected="kindDeepCopyGen(r.kind) === currentFile"
+            @click="changeFile(kindDeepCopyGen(r.kind))"
+            >{{ kindDeepCopyGen(r.kind) }}</a
+          >
+        </li>
+      </ul>
+
+      <code-mirror :code="code"></code-mirror>
     </div>
+    <!-- <code-mirror :code="code" col-span-2></code-mirror> -->
   </div>
 </template>

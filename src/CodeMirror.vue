@@ -2,8 +2,8 @@
   <Codemirror
     :value="props.code"
     :options="cmOptions"
-    border
     ref="cmRef"
+    border
   >
   </Codemirror>
 </template>
