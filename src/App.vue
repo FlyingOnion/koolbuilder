@@ -246,6 +246,8 @@ func mustGetOrLogFatal[T any](v T, err error) T {
 	return v
 }
 
+var _ schema.ObjectKind
+
 func addKnownTypes(s *runtime.Scheme) {
 ${resources.value
   .filter((item) => item.isCustomResource)
@@ -337,6 +339,8 @@ func New${controllerName.value}(
 ${resources.value
   .map((item) => `\t${lowerKind(item.kind)}Informer kool.${item.isNamespaced ? "Namespaced" : ""}Informer[${goType(item)}],`)
   .join("\n")}
+	queue workqueue.RateLimitingInterface,
+	retryOnError int,
 ) *${controllerName.value} {
 	c := &${controllerName.value}{
 		queue:        queue,
@@ -386,7 +390,7 @@ func (c *${controllerName.value}) Run(ctx context.Context, workers int) {
 }
 
 func (c *${controllerName.value}) runWorker(ctx context.Context) {
-	for c.processNextWorkItem(ctx) {
+	for c.processNextItem(ctx) {
 	}
 }
 
@@ -402,7 +406,7 @@ func (c *${controllerName.value}) processNextItem(ctx context.Context) bool {
 	defer c.queue.Done(key)
 
 	// Invoke the method containing the business logic
-	err := c.Sync${resources.value[0].kind || "UnknownType"}(ctx, key.(string))
+	err := c.sync${resources.value[0].kind || "UnknownType"}(ctx, key.(string))
 	// Handle the error if something went wrong during the execution of the business logic
 	c.handleErr(ctx, err, key)
 
@@ -482,7 +486,7 @@ func (c *${controllerName.value}) Add${resources.value[0].kind || "UnknownType"}
 	c.queue.AddRateLimited(key)
 }
 
-func (c *${controllerName.value}) Update${resources.value[0].kind || "UnknownType"}(oldObj, newObj any) {
+func (c *${controllerName.value}) Update${resources.value[0].kind || "UnknownType"}(oldObj, curObj any) {
 	key, err := cache.MetaNamespaceKeyFunc(curObj)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("couldn't get key for object %+v: %v", curObj, err))
