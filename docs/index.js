@@ -223,7 +223,7 @@ ${T.value.map(Y=>`	${bt(Y.kind)}Synced cache.InformerSynced`).join(`
 }
 
 func New${h.value}(
-${T.value.map(Y=>`	${bt(Y.kind)}Informer kool.${Y.isNamespaced?"Namespaced":""}Informer[${re(Y)}],`).join(`
+${T.value.map(Y=>`	${bt(Y.kind)}Informer kool.${Y.isNamespaced&&S.value.length>0?"Namespaced":""}Informer[${re(Y)}],`).join(`
 `)}
 	queue workqueue.RateLimitingInterface,
 	retryOnError int,

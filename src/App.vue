@@ -5,10 +5,10 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { Resource, getAlias, getVersionFromPackage, group2Versions, lowerKind, kindDeepCopyGen } from "./helper";
 
-const koolVersion = "0.1.0";
+const koolVersion = "0.1.2";
 const defaultName = "KoolController";
 const goVersionOptions: string[] = ["1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.20", "1.19", "1.18"];
-const k8sApiVersionOptions: string[] = ["0.28.3", "0.28.2"];
+const k8sApiVersionOptions: string[] = ["0.28.4", "0.28.3", "0.28.2"];
 
 const builtinResourcesOptions: Resource[] = [
   {
@@ -224,6 +224,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -259,33 +260,47 @@ ${resources.value
 \t}, &${goType(item)}{})\n`
   )}}
 
+func homeDirKubeConfigOrEmpty() (kubeconfig string) {
+	if h, err := os.UserHomeDir(); err == nil {
+		kubeconfig = filepath.Join(h, ".kube", "config")
+	}
+	return
+}
+
 func main() {
 	var kubeconfig string
 	var master string
 
-	pflag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
+	pflag.StringVar(&kubeconfig, "kubeconfig", homeDirKubeConfigOrEmpty(), "absolute path to the kubeconfig file")
 	pflag.StringVar(&master, "master", "", "master url")
 	pflag.Parse()
 
 	addKnownTypes(scheme.Scheme)
 
 	config := mustGetOrLogFatal(clientcmd.BuildConfigFromFlags(master, kubeconfig))
-	client := mustGetOrLogFatal(rest.RESTClientFor(config))
-
+	httpClient := mustGetOrLogFatal(rest.HTTPClientFor(config))
+	// init clients and informers
 ${resources.value
-  .map((item) => `\t${lowerKind(item.kind)}Informer := kool.New${
+  .map((item) =>
+`\t${lowerKind(item.kind)}Client := mustGetOrLogFatal(kool.NewRESTClient(config, httpClient, &schema.GroupVersion{Group: "${item.group === "core" ? "" : item.group || "undefined"}", Version: "${item.version || "undefined"}"}))`).join("\n")}
+${resources.value
+  .map((item) =>
+`\t${lowerKind(item.kind)}Informer := kool.New${
     item.isNamespaced && namespace.value.length > 0 ? "Namespaced" : ""
-  }Informer[${goType(item)}](client, ${item.isNamespaced && namespace.value.length > 0 ? `"${namespace.value}", ` : ""}30*time.Second)`)
+  }Informer[${goType(item)}](${lowerKind(item.kind)}Client, ${item.isNamespaced && namespace.value.length > 0 ? `"${namespace.value}", ` : ""}30*time.Second)`)
   .join("\n")}
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-	controller := New${controllerName.value}(${resources.value.map((item) => `${lowerKind(item.kind)}Informer, `)}queue, ${retry.value})
+	controller := New${controllerName.value}(${resources.value.map((item) => `${lowerKind(item.kind)}Informer`).join(", ")}, queue, ${retry.value})
 
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(context.Background())
-
+${resources.value
+  .map((item) =>
+`\tgo ${lowerKind(item.kind)}Informer.Informer().Run(ctx.Done())`
+  ).join("\n")}
 	go controller.Run(ctx, 1)
 
 	select {
@@ -337,7 +352,7 @@ ${resources.value
 
 func New${controllerName.value}(
 ${resources.value
-  .map((item) => `\t${lowerKind(item.kind)}Informer kool.${item.isNamespaced ? "Namespaced" : ""}Informer[${goType(item)}],`)
+  .map((item) => `\t${lowerKind(item.kind)}Informer kool.${item.isNamespaced && namespace.value.length > 0 ? "Namespaced" : ""}Informer[${goType(item)}],`)
   .join("\n")}
 	queue workqueue.RateLimitingInterface,
 	retryOnError int,
