@@ -5,7 +5,7 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { Resource, getAlias, getVersionFromPackage, group2Versions, lowerKind, kindDeepCopyGen } from "./helper";
 
-const koolVersion = "0.1.2";
+const koolVersion = "0.1.3";
 const defaultName = "KoolController";
 const goVersionOptions: string[] = ["1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.20", "1.19", "1.18"];
 const k8sApiVersionOptions: string[] = ["0.28.4", "0.28.3", "0.28.2"];
@@ -207,7 +207,6 @@ go ${goVersion.value}
 require (
 	github.com/FlyingOnion/kool v${koolVersion}
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/spf13/pflag v1.0.5
 	k8s.io/apimachinery v${k8sApiVersion.value}
 	k8s.io/client-go v${k8sApiVersion.value}
 	k8s.io/klog/v2 v2.110.1
@@ -222,6 +221,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -268,11 +268,14 @@ func homeDirKubeConfigOrEmpty() (kubeconfig string) {
 }
 
 func main() {
+	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	klog.InitFlags(f)
+	pflag.CommandLine.AddGoFlagSet(f)
+	
 	var kubeconfig string
 	var master string
-
-	pflag.StringVar(&kubeconfig, "kubeconfig", homeDirKubeConfigOrEmpty(), "absolute path to the kubeconfig file")
-	pflag.StringVar(&master, "master", "", "master url")
+	pflag.CommandLine.StringVar(&kubeconfig, "kubeconfig", homeDirKubeConfigOrEmpty(), "absolute path to the kubeconfig file")
+	pflag.CommandLine.StringVar(&master, "master", "", "master url")
 	pflag.Parse()
 
 	addKnownTypes(scheme.Scheme)
@@ -470,8 +473,10 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/klog/v2"
 	${imports.value.map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
 )
 
@@ -483,15 +488,27 @@ func (c *${controllerName.value}) doSync${resources.value[0].kind || "UnknownTyp
 	// ATTENTION: this function may cause error if you regenerate the code with namespace change
 	// from ""(global) to non-empty(namespaced) or vice versa
 
-	// switch following code between global and namespaced lister
-	//  // global lister
-	//  c.${lowerKind(resources.value[0].kind)}Lister.Namespaced(namespace).Get(name)
-	//  // namespaced lister
-	//  c.${lowerKind(resources.value[0].kind)}Lister.Get(name)
+	// if this happens, try switching code like the example below
+	//  // when using global lister
+	//  ${lowerKind(resources.value[0].kind)}, err := c.${lowerKind(resources.value[0].kind)}Lister.Namespaced(namespace).Get(name)
+	//  // when using namespaced lister
+	//  ${lowerKind(resources.value[0].kind)}, err := c.${lowerKind(resources.value[0].kind)}Lister.Get(name)
 
+	// example code below shows how to sync resource result to stdout using ${resources.value[0].isNamespaced ? "namespaced" : "global"} lister
+	${lowerKind(resources.value[0].kind)}, err := c.${lowerKind(resources.value[0].kind)}Lister${namespace.value.length > 0 && resources.value[0].isNamespaced ? "" : ".Namespaced(namespace)"}.Get(name)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			utilruntime.HandleError(fmt.Errorf("${lowerKind(resources.value[0].kind)} '%s/%s' in work queue does not exists", namespace, name))
+			return nil
+		}
+		return err
+	}
+	klog.Infof("${lowerKind(resources.value[0].kind)} %s has been synced", ${lowerKind(resources.value[0].kind)}.Name)
 	return nil
 }
 
+// Add${resources.value[0].kind || "UnknownType"} is an event handler of ${lowerKind(resources.value[0].kind)}Informer.
+// If you don't know how to modify, just leave it unchanged.
 func (c *${controllerName.value}) Add${resources.value[0].kind || "UnknownType"}(obj any) {
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -501,6 +518,8 @@ func (c *${controllerName.value}) Add${resources.value[0].kind || "UnknownType"}
 	c.queue.AddRateLimited(key)
 }
 
+// Update${resources.value[0].kind || "UnknownType"} is an event handler of ${lowerKind(resources.value[0].kind)}Informer.
+// If you don't know how to modify, just leave it unchanged.
 func (c *${controllerName.value}) Update${resources.value[0].kind || "UnknownType"}(oldObj, curObj any) {
 	key, err := cache.MetaNamespaceKeyFunc(curObj)
 	if err != nil {
@@ -510,6 +529,8 @@ func (c *${controllerName.value}) Update${resources.value[0].kind || "UnknownTyp
 	c.queue.AddRateLimited(key)
 }
 
+// Delete${resources.value[0].kind || "UnknownType"} is an event handler of ${lowerKind(resources.value[0].kind)}Informer.
+// If you don't know how to modify, just leave it unchanged.
 func (c *${controllerName.value}) Delete${resources.value[0].kind || "UnknownType"}(obj any) {
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -521,12 +542,16 @@ func (c *${controllerName.value}) Delete${resources.value[0].kind || "UnknownTyp
 ${resources.value.slice(1).map(
   (item) =>
     `
+// Add${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
+// If you don't know how to modify or don't need to customize this event, just leave it empty.
 func (c *${controllerName.value}) Add${item.kind || "UnknownType"}(obj any) {
 	${lowerKind(item.kind)} := obj.(*${goType(item)})
 	// TODO: do something with ${lowerKind(item.kind)}
 	_ = ${lowerKind(item.kind)}
 }
 
+// Update${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
+// If you don't know how to modify or don't need to customize this event, just leave it empty.
 func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, newObj any) {
 	old := oldObj.(*${goType(item)})
 	cur := newObj.(*${goType(item)})
@@ -534,18 +559,20 @@ func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, ne
 	_, _ = old, cur
 }
 
+// Delete${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
+// If you don't know how to modify or don't need to customize this event, just leave it empty.
 func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
 	${lowerKind(item.kind)}, ok := obj.(*${goType(item)})
 	if !ok {
 		// error handling
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			runtime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("couldn't get object from tombstone %#v", obj))
 			return
 		}
 		${lowerKind(item.kind)}, ok = tombstone.Obj.(*${goType(item)})
 		if !ok {
-			runtime.HandleError(fmt.Errorf("tombstone contained object that is not a bar %#v", obj))
+			utilruntime.HandleError(fmt.Errorf("tombstone contained object that is not a(an) ${lowerKind(item.kind)} %#v", obj))
 			return
 		}
 	}
