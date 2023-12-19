@@ -623,7 +623,8 @@ function download() {
 
 <template>
   <div grid grid-cols-3 gap-4 p-4>
-    <div col-span-3 lg:col-span-1 flex flex-col gap-1>
+    <div relative col-span-3 lg:col-span-1 flex flex-col gap-1>
+      <a href="https://github.com/FlyingOnion/koolbuilder" absolute top-0 right-0><img decoding="async" width="149" height="149" src="https://github.blog/wp-content/uploads/2008/12/forkme_right_red_aa0000.png?resize=149%2C149" class="attachment-full size-full" alt="Fork me on GitHub" loading="lazy" data-recalc-dims="1"></a>
       <p text-2xl font-semibold leading-7 text-gray-900>Koolbuilder</p>
       <p text-base leading-6 text-gray-600>Build your kubernetes operator easily</p>
       <p>(WIP)</p>
