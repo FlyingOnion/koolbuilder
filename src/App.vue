@@ -3,129 +3,12 @@ import { computed, ref } from "vue";
 import CodeMirror from "./CodeMirror.vue";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import { Resource, getAlias, getVersionFromPackage, group2Versions, lowerKind, kindDeepCopyGen } from "./helper";
+import { Resource, officialResources, getAlias, getVersionFromPackage, group2Versions, lowerKind, kind2Group, kindDeepCopyGen } from "./helper";
 
 const koolVersion = "0.1.3";
 const defaultName = "KoolController";
 const goVersionOptions: string[] = ["1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.20", "1.19", "1.18"];
 const k8sApiVersionOptions: string[] = ["0.28.4", "0.28.3", "0.28.2"];
-
-const builtinResourcesOptions: Resource[] = [
-  {
-    isCustomResource: false,
-    kind: "Deployment",
-    group: "apps",
-    version: "v1",
-    package: "k8s.io/api/apps/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "StatefulSet",
-    group: "apps",
-    version: "v1",
-    package: "k8s.io/api/apps/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "ReplicaSet",
-    group: "apps",
-    version: "v1",
-    package: "k8s.io/api/apps/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "DaemonSet",
-    group: "apps",
-    version: "v1",
-    package: "k8s.io/api/apps/v1",
-    isNamespaced: true,
-  },
-
-  {
-    isCustomResource: false,
-    kind: "Job",
-    group: "batch",
-    version: "v1",
-    package: "k8s.io/api/batch/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "CronJob",
-    group: "batch",
-    version: "v1",
-    package: "k8s.io/api/batch/v1",
-    isNamespaced: true,
-  },
-
-  {
-    isCustomResource: false,
-    kind: "Binding",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "Pod",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "PodTemplate",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "Endpoints",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "ReplicationController",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-  {
-    isCustomResource: false,
-    kind: "Node",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: false,
-  },
-  {
-    isCustomResource: false,
-    kind: "Namespace",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: false,
-  },
-  {
-    isCustomResource: false,
-    kind: "Service",
-    group: "core",
-    version: "v1",
-    package: "k8s.io/api/core/v1",
-    isNamespaced: true,
-  },
-];
 
 const controllerName = ref<string>(defaultName);
 const lowerControllerName = computed<string>(() => controllerName.value.toLowerCase());
@@ -139,7 +22,7 @@ const k8sApiVersion = ref<string>(k8sApiVersionOptions[0]);
 const retry = ref<number>(3);
 const namespace = ref<string>("");
 
-const podResource: Resource = { ...builtinResourcesOptions[7] };
+const podResource: Resource = { ...officialResources["core"][8], isCustomResource: false };
 const resources = ref<Resource[]>([podResource]);
 
 const imports = computed<string[]>(() => {
@@ -149,7 +32,7 @@ const imports = computed<string[]>(() => {
       return;
     }
     if (!item.isCustomResource && item.kind.length > 0) {
-      set.add(`k8s.io/api/${item.group}/${item.version}`);
+      set.add(item.package);
       return;
     }
     item.package.length === 0 || item.package === goModule.value || set.add(item.package);
@@ -177,15 +60,17 @@ function changeCustomGoModuleNameFlag() {
 }
 
 function changeKind(index: number) {
-  const newItem = builtinResourcesOptions.filter((i) => i.kind === resources.value[index].kind)[0];
-  resources.value[index] = { ...newItem };
+  // const newItem = builtinResourcesOptions.filter((i) => i.kind === resources.value[index].kind)[0];
+  const kind = resources.value[index].kind;
+  const newItem = officialResources[kind2Group(kind)].filter((i) => i.kind === kind)[0];
+  resources.value[index] = { ...newItem, isCustomResource: false };
 }
 
 function resetResource(index: number) {
   resources.value[index].group = "";
   resources.value[index].version = "";
   resources.value[index].package = "";
-  if (resources.value[index].isCustomResource) {
+  if (!!resources.value[index].isCustomResource) {
     resources.value[index].kind = "";
   }
 }
@@ -624,7 +509,17 @@ function download() {
 <template>
   <div grid grid-cols-3 gap-4 p-4>
     <div relative col-span-3 lg:col-span-1 flex flex-col gap-1>
-      <a href="https://github.com/FlyingOnion/koolbuilder" absolute top-0 right-0><img decoding="async" width="149" height="149" src="https://github.blog/wp-content/uploads/2008/12/forkme_right_red_aa0000.png?resize=149%2C149" class="attachment-full size-full" alt="Fork me on GitHub" loading="lazy" data-recalc-dims="1"></a>
+      <a href="https://github.com/FlyingOnion/koolbuilder" absolute top-0 right-0
+        ><img
+          decoding="async"
+          width="149"
+          height="149"
+          src="https://github.blog/wp-content/uploads/2008/12/forkme_right_red_aa0000.png?resize=149%2C149"
+          class="attachment-full size-full"
+          alt="Fork me on GitHub"
+          loading="lazy"
+          data-recalc-dims="1"
+      /></a>
       <p text-2xl font-semibold leading-7 text-gray-900>Koolbuilder</p>
       <p text-base leading-6 text-gray-600>Build your kubernetes operator easily</p>
       <p>(WIP)</p>
@@ -693,9 +588,12 @@ function download() {
         <label :for="'kind-' + index.toString()">Kind</label>
         <input v-if="item.isCustomResource" :id="'kind-' + index.toString()" v-model="item.kind" border rounded px-2 />
         <select v-else :id="'kind-' + index.toString()" v-model="item.kind" @change="changeKind(index)" border rounded px-1>
-          <option v-for="item in builtinResourcesOptions" :key="item.kind" :value="item.kind">
+          <optgroup v-for="(resources, group) in officialResources" :key="group.toString()" :label="group.toString()">
+            <option v-for="item in resources" :key="item.kind" :value="item.kind">{{ item.kind }}</option>
+          </optgroup>
+          <!-- <option v-for="item in builtinResourcesOptions" :key="item.kind" :value="item.kind">
             {{ item.kind }}
-          </option>
+          </option> -->
         </select>
         <!-- group -->
         <label :for="'group-' + index.toString()">Group</label>
