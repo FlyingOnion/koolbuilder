@@ -4,8 +4,15 @@ export interface Resource {
   version?: string;
   kind: string;
   package?: string;
-  genDeepCopy?: boolean;
+  template?: Template;
   isNamespaced?: boolean;
+}
+
+export enum Template {
+  None = 0,
+  Definition = 1,
+  DeepCopy = 2,
+  Both = 3,
 }
 
 const versionRegex = /^v\d+((alpha|beta|rc)\d+)?$/;
@@ -41,6 +48,18 @@ export function getAlias(pkg: string | undefined): string {
 
 export function lowerKind(kind: string): string {
   return kind.toLowerCase() || "unknowntype";
+}
+
+export function packageName(pkg: string): string {
+  if (pkg.length === 0) {
+    return "main"
+  }
+  const s = pkg.split("/");
+  return s[s.length - 1];
+}
+
+export function kindDefinitionGen(kind: string): string {
+  return lowerKind(kind) + "_gen.definition.go";
 }
 
 export function kindDeepCopyGen(kind: string): string {
@@ -218,7 +237,7 @@ export const officialResources: { [key: string]: readonly Resource[] } = {
       isNamespaced: true,
     },
   ],
-  "discovery.k8s.io": [
+  discovery: [
     {
       kind: "EndpointSlice",
       group: "discovery.k8s.io",
@@ -227,7 +246,7 @@ export const officialResources: { [key: string]: readonly Resource[] } = {
       isNamespaced: true,
     },
   ],
-  "networking.k8s.io": [
+  networking: [
     {
       kind: "Ingress",
       group: "networking.k8s.io",
@@ -250,7 +269,7 @@ export const officialResources: { [key: string]: readonly Resource[] } = {
       isNamespaced: true,
     },
   ],
-  "rbac.authorization.k8s.io": [
+  rbac: [
     {
       kind: "ClusterRole",
       group: "rbac.authorization.k8s.io",
@@ -280,7 +299,7 @@ export const officialResources: { [key: string]: readonly Resource[] } = {
       isNamespaced: true,
     },
   ],
-  "storage.k8s.io": [
+  storage: [
     {
       kind: "CSIDriver",
       group: "storage.k8s.io",
@@ -347,36 +366,37 @@ const kindGroupMap: {[key: string]: string} = {
   ServiceAccount: "core",
   Service: "core",
 
-  EndpointSlice: "discovery.k8s.io",
+  EndpointSlice: "discovery",
 
-  Ingress: "networking.k8s.io",
-  IngressClass: "networking.k8s.io",
-  NetworkPolicy: "networking.k8s.io",
+  Ingress: "networking",
+  IngressClass: "networking",
+  NetworkPolicy: "networking",
 
-  ClusterRole: "rbac.authorization.k8s.io",
-  ClusterRoleBinding: "rbac.authorization.k8s.io",
-  Role: "rbac.authorization.k8s.io",
-  RoleBinding: "rbac.authorization.k8s.io",
+  ClusterRole: "rbac",
+  ClusterRoleBinding: "rbac",
+  Role: "rbac",
+  RoleBinding: "rbac",
   
-  CSIDriver: "storage.k8s.io",
-  CSINode: "storage.k8s.io",
-  CSIStorageCapacity: "storage.k8s.io",
-  StorageClass: "storage.k8s.io",
-  VolumeAttachment: "storage.k8s.io",
+  CSIDriver: "storage",
+  CSINode: "storage",
+  CSIStorageCapacity: "storage",
+  StorageClass: "storage",
+  VolumeAttachment: "storage",
 };
 
 export function kind2Group(kind: string): string {
   return kindGroupMap[kind] || "undefined";
 }
 
-interface MapStringStringArray {
-  [key: string]: string[];
-}
-
-const groupVersionMap: MapStringStringArray = {
-  apps: ["v1"],
+const groupVersionMap: { [key: string]: string[] } = {
+  apps: ["v1", "v1beta1", "v1beta2"],
+  autoscaling: ["v1", "v2", "v2beta1", "v2beta2"],
   batch: ["v1", "v1beta1"],
   core: ["v1"],
+  discovery: ["v1", "v1beta1"],
+  networking: ["v1", "v1alpha1", "v1beta1"],
+  rbac: ["v1", "v1alpha1", "v1beta1"],
+  storage: ["v1", "v1alpha1", "v1beta1"],
 };
 
 export function group2Versions(group: string | undefined): string[] {

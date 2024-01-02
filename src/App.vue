@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { ComputedRef, computed, ref } from "vue";
 import CodeMirror from "./CodeMirror.vue";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
-import { Resource, officialResources, getAlias, getVersionFromPackage, group2Versions, lowerKind, kind2Group, kindDeepCopyGen } from "./helper";
+import {
+  Resource,
+  officialResources,
+  getAlias,
+  getVersionFromPackage,
+  group2Versions,
+  lowerKind,
+  kind2Group,
+  kindDeepCopyGen,
+  kindDefinitionGen,
+  packageName,
+} from "./helper";
 
 const koolVersion = "0.1.3";
 const defaultName = "KoolController";
@@ -22,7 +33,7 @@ const k8sApiVersion = ref<string>(k8sApiVersionOptions[0]);
 const retry = ref<number>(3);
 const namespace = ref<string>("");
 
-const podResource: Resource = { ...officialResources["core"][8], isCustomResource: false };
+const podResource: Resource = { ...officialResources["core"][8], isCustomResource: false, template: 0 };
 const resources = ref<Resource[]>([podResource]);
 
 const imports = computed<string[]>(() => {
@@ -46,6 +57,7 @@ function addResource() {
     kind: "",
     package: "",
     isNamespaced: true,
+    template: 0,
   });
 }
 
@@ -59,17 +71,24 @@ function changeCustomGoModuleNameFlag() {
   }
 }
 
+// use in official resources
+function changeVersion(index: number, group: string) {
+  const res = resources.value[index];
+  res.package = "k8s.io/api/" + group + "/" + res.version;
+}
+
 function changeKind(index: number) {
   // const newItem = builtinResourcesOptions.filter((i) => i.kind === resources.value[index].kind)[0];
   const kind = resources.value[index].kind;
   const newItem = officialResources[kind2Group(kind)].filter((i) => i.kind === kind)[0];
-  resources.value[index] = { ...newItem, isCustomResource: false };
+  resources.value[index] = { ...newItem, isCustomResource: false, template: 0 };
 }
 
 function resetResource(index: number) {
   resources.value[index].group = "";
   resources.value[index].version = "";
   resources.value[index].package = "";
+  resources.value[index].template = 0;
   if (!!resources.value[index].isCustomResource) {
     resources.value[index].kind = "";
   }
@@ -468,7 +487,7 @@ func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
 
 const files: string[] = ["go.mod", "main.go", "controller.go", "custom.go"];
 const currentFile = ref<string>("main.go");
-const filesMap = {
+const filesMap: { [key: string]: ComputedRef<string> } = {
   "go.mod": _goMod,
   "main.go": _main,
   "controller.go": _controller,
@@ -478,6 +497,44 @@ const code = computed<string>(() => {
   const r = filesMap[currentFile.value];
   return r.value || "";
 });
+
+function changeTemplate(index: number) {
+  const res = resources.value[index];
+  switch (res.template) {
+    case 0:
+    case 1:
+      files.value.push(kindDefinitionGen(res.kind));
+      filesMap[kindDefinitionGen(res.kind)] = computed<string>(() => 
+// prettier-ignore
+`package ${packageName(res.package || "unknown")}
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+type ${res.kind || "UnknownType"} struct {
+	metav1.TypeMeta \`json:",inline"\`
+	
+  // +optional
+	metav1.ObjectMeta \`json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"\`
+
+	// +optional
+	Spec ${res.kind || "UnknownType"}Spec \`json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"\`
+
+	// +optional
+	Status ${res.kind || "UnknownType"}Status \`json:"status,omitempty" protobuf:"bytes,3,opt,name=status"\`
+}
+
+type ${res.kind || "UnknownType"}Spec struct {
+	// add your own spec here
+}
+
+type ${res.kind || "UnknownType"}Status struct {
+  // add your own status here
+}
+`);
+  }
+}
 
 function changeFile(file: string) {
   currentFile.value = file;
@@ -493,7 +550,7 @@ function goType(rs: Resource): string {
 
 function download() {
   const zip = new JSZip();
-  for (const file of files) {
+  for (const file of files.value) {
     zip.file(file, filesMap[file].value);
   }
   // zip.file("go.mod", _goMod.value);
@@ -628,6 +685,7 @@ function download() {
           :id="'version-' + index.toString()"
           v-model="item.version"
           :disabled="item.kind.length === 0"
+          @change="changeVersion(index, kind2Group(item.kind))"
           border
           rounded
           px-1
@@ -636,11 +694,11 @@ function download() {
           <option v-for="version in group2Versions(item.group)" :key="version" :value="version">{{ version }}</option>
         </select>
         <!-- package -->
-        <label v-show="item.isCustomResource" :for="'package-' + index.toString()">Package</label>
+        <label :for="'package-' + index.toString()">Package</label>
         <input
-          v-show="item.isCustomResource"
           :id="'package-' + index.toString()"
           v-model="item.package"
+          :disabled="!item.isCustomResource"
           @change="tryResetResourceVersion(index)"
           border
           rounded
@@ -659,6 +717,25 @@ function download() {
         >
           <option :value="true">Namespaced</option>
           <option :value="false">Cluster</option>
+        </select>
+        <!-- generate template (custom only) -->
+
+        <label :for="'template-' + index.toString()">Generate Resource Template</label>
+        <select
+          :id="'template-' + index.toString()"
+          v-model="item.template"
+          :disabled="
+            !item.isCustomResource || (typeof item.package !== 'undefined' && item.package.length > 0 && !item.package.startsWith(goModule))
+          "
+          @change="changeTemplate(index)"
+          border
+          rounded
+          px-1
+        >
+          <option :value="0">None</option>
+          <option :value="1">Definition</option>
+          <option :value="2">DeepCopy</option>
+          <option :value="3">Both</option>
         </select>
       </template>
       <button @click="addResource" flex items-center justify-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
@@ -694,7 +771,7 @@ function download() {
             >{{ f }}</a
           >
         </li>
-        <li v-for="r in resources.filter((r) => r.genDeepCopy)" :key="r.kind">
+        <li v-for="r in resources.filter((r) => r.template && r.template > 0)" :key="r.kind">
           <a
             text-center
             rounded
