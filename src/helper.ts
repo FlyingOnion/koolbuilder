@@ -50,20 +50,12 @@ export function lowerKind(kind: string): string {
   return kind.toLowerCase() || "unknowntype";
 }
 
-export function packageName(pkg: string): string {
+export function gopkg(pkg: string): string {
   if (pkg.length === 0) {
     return "main"
   }
   const s = pkg.split("/");
   return s[s.length - 1];
-}
-
-export function kindDefinitionGen(kind: string): string {
-  return lowerKind(kind) + "_gen.definition.go";
-}
-
-export function kindDeepCopyGen(kind: string): string {
-  return lowerKind(kind) + "_gen.deepcopy.go";
 }
 
 // officialResources should be readonly
@@ -384,6 +376,8 @@ const kindGroupMap: {[key: string]: string} = {
   VolumeAttachment: "storage",
 };
 
+// use this to get group from kind.
+// officialResources should use this to map key.
 export function kind2Group(kind: string): string {
   return kindGroupMap[kind] || "undefined";
 }
@@ -401,4 +395,11 @@ const groupVersionMap: { [key: string]: string[] } = {
 
 export function group2Versions(group: string | undefined): string[] {
   return typeof group === "undefined" ? [] : groupVersionMap[group];
+}
+
+export interface ResourceGen {
+  kind: string;
+  package: string;
+  fileName: string;
+  code: string;
 }

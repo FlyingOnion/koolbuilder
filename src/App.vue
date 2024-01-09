@@ -11,9 +11,9 @@ import {
   group2Versions,
   lowerKind,
   kind2Group,
-  kindDeepCopyGen,
-  kindDefinitionGen,
-  packageName,
+  gopkg,
+  ResourceGen,
+  Template,
 } from "./helper";
 
 const koolVersion = "0.1.3";
@@ -39,14 +39,8 @@ const resources = ref<Resource[]>([podResource]);
 const imports = computed<string[]>(() => {
   const set = new Set<string>();
   resources.value.forEach((item) => {
-    if (typeof item.package === "undefined") {
-      return;
-    }
-    if (!item.isCustomResource && item.kind.length > 0) {
-      set.add(item.package);
-      return;
-    }
-    item.package.length === 0 || item.package === goModule.value || set.add(item.package);
+    const pkg = packageName(item);
+    pkg === "undefined" || set.add(pkg);
   });
   return Array.from(set).sort();
 });
@@ -89,13 +83,14 @@ function resetResource(index: number) {
   resources.value[index].version = "";
   resources.value[index].package = "";
   resources.value[index].template = 0;
-  if (!!resources.value[index].isCustomResource) {
+  resources.value[index].isNamespaced = true;
+  if (resources.value[index].isCustomResource) {
     resources.value[index].kind = "";
   }
 }
 
 function tryResetResourceVersion(index: number) {
-  const v = getVersionFromPackage(resources.value[index].package);
+  const v = getVersionFromPackage(packageName(resources.value[index]));
   if (v.length > 0) {
     resources.value[index].version = v;
   }
@@ -160,7 +155,7 @@ ${resources.value
     (item) =>
 `\ts.AddKnownTypes(schema.GroupVersion{
 \t\tGroup:   "${item.group || "undefined"}",
-\t\tVersion: "${item.version || "undefined"}",
+\t\tVersion: "${item.version || "v1"}",
 \t}, &${goType(item)}{})\n`
   )}}
 
@@ -189,7 +184,7 @@ func main() {
 	// init clients and informers
 ${resources.value
   .map((item) =>
-`\t${lowerKind(item.kind)}Client := mustGetOrLogFatal(kool.NewRESTClient(config, httpClient, &schema.GroupVersion{Group: "${item.group === "core" ? "" : item.group || "undefined"}", Version: "${item.version || "undefined"}"}))`).join("\n")}
+`\t${lowerKind(item.kind)}Client := mustGetOrLogFatal(kool.NewRESTClient(config, httpClient, &schema.GroupVersion{Group: "${item.group === "core" ? "" : item.group || "undefined"}", Version: "${item.version || "v1"}"}))`).join("\n")}
 ${resources.value
   .map((item) =>
 `\t${lowerKind(item.kind)}Informer := kool.New${
@@ -494,47 +489,112 @@ const filesMap: { [key: string]: ComputedRef<string> } = {
   "custom.go": _custom,
 };
 const code = computed<string>(() => {
+  if (currentFile.value.endsWith("-def.go")) {
+    const c = defCode.value.filter((item) => item.fileName === currentFile.value);
+    if (c.length > 0) {
+      return c[0].code;
+    }
+    currentFile.value = "main.go";
+  } else if (currentFile.value.endsWith("-deepcopy.go")) {
+    const c = deepcopyCode.value.filter((item) => item.fileName === currentFile.value);
+    if (c.length > 0) {
+      return c[0].code;
+    }
+    currentFile.value = "main.go";
+  }
   const r = filesMap[currentFile.value];
   return r.value || "";
 });
 
-function changeTemplate(index: number) {
-  const res = resources.value[index];
-  switch (res.template) {
-    case 0:
-    case 1:
-      files.value.push(kindDefinitionGen(res.kind));
-      filesMap[kindDefinitionGen(res.kind)] = computed<string>(() => 
-// prettier-ignore
-`package ${packageName(res.package || "unknown")}
+function isResourceGenDef(item: Resource): boolean {
+  return (
+    !!item.isCustomResource &&
+    packageName(item) !== "undefined" &&
+    (item.template === Template.Definition || item.template === Template.Both)
+  );
+}
+
+function isResourceGenDeepcopy(item: Resource): boolean {
+  return (
+    !!item.isCustomResource && packageName(item) !== "undefined" && (item.template === Template.DeepCopy || item.template === Template.Both)
+  );
+}
+
+const defCode = computed<ResourceGen[]>(() => {
+  return resources.value
+    .filter((item) => isResourceGenDef(item))
+    .map((item) => ({
+      kind: item.kind,
+      package: item.package || "main",
+      fileName: `${lowerKind(item.kind)}-def.go`,
+      // prettier-ignore
+      code: `package ${gopkg(packageName(item))}
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-type ${res.kind || "UnknownType"} struct {
+type ${item.kind || "UnknownType"} struct {
 	metav1.TypeMeta \`json:",inline"\`
 	
-  // +optional
+	// +optional
 	metav1.ObjectMeta \`json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"\`
 
 	// +optional
-	Spec ${res.kind || "UnknownType"}Spec \`json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"\`
+	Spec ${item.kind || "UnknownType"}Spec \`json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"\`
 
 	// +optional
-	Status ${res.kind || "UnknownType"}Status \`json:"status,omitempty" protobuf:"bytes,3,opt,name=status"\`
+	Status ${item.kind || "UnknownType"}Status \`json:"status,omitempty" protobuf:"bytes,3,opt,name=status"\`
 }
 
-type ${res.kind || "UnknownType"}Spec struct {
+type ${item.kind || "UnknownType"}Spec struct {
 	// add your own spec here
 }
 
-type ${res.kind || "UnknownType"}Status struct {
-  // add your own status here
+type ${item.kind || "UnknownType"}Status struct {
+	// add your own status here
 }
-`);
-  }
+`,
+    }));
+});
+
+const deepcopyCode = computed<ResourceGen[]>(() => {
+  return resources.value
+    .filter((item) => isResourceGenDeepcopy(item))
+    .map((item) => ({
+      kind: item.kind,
+      package: item.package || "main",
+      fileName: `${lowerKind(item.kind)}-deepcopy.go`,
+      // prettier-ignore
+      code: `package ${gopkg(packageName(item))}
+
+import (
+	"github.com/mitchellh/mapstructure"
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+func (in *${item.kind || "UnknownType"}) DeepCopyObject() runtime.Object {
+	if out := in.DeepCopy(); out != nil {
+		return out
+	}
+	return nil
 }
+
+func (in *${item.kind || "UnknownType"}) DeepCopy() *${item.kind || "UnknownType"} {
+	if in == nil {
+		return nil
+	}
+	out := new(${item.kind || "UnknownType"})
+	in.DeepCopyInto(out)
+	return out
+}
+
+func (in *${item.kind || "UnknownType"}) DeepCopyInto(out *${item.kind || "UnknownType"}) {
+	mapstructure.Decode(in, out)
+}
+`,
+    }));
+});
 
 function changeFile(file: string) {
   currentFile.value = file;
@@ -548,14 +608,25 @@ function goType(rs: Resource): string {
     : getAlias(rs.package) + "." + rs.kind;
 }
 
+function packageName(rs: Resource): string {
+  return typeof rs.package === "undefined" || rs.package.length === 0
+    ? "undefined"
+    : rs.isCustomResource && rs.template && rs.template > 0
+    ? goModule.value + "/" + rs.package
+    : rs.package;
+}
+
 function download() {
   const zip = new JSZip();
-  for (const file of files.value) {
+  for (const file of files) {
     zip.file(file, filesMap[file].value);
   }
-  // zip.file("go.mod", _goMod.value);
-  // zip.file("main.go", _main.value);
-  // zip.file("controller.go", _controller.value);
+  for (const c of defCode.value) {
+    zip.file(`${c.package}/${c.fileName}`, c.code);
+  }
+  for (const c of deepcopyCode.value) {
+    zip.file(`${c.package}/${c.fileName}`, c.code);
+  }
 
   zip.generateAsync({ type: "blob" }).then((content) => {
     saveAs(content, `${controllerName.value}.zip`);
@@ -691,11 +762,42 @@ function download() {
           px-1
           disabled-bg-light
         >
-          <option v-for="version in group2Versions(item.group)" :key="version" :value="version">{{ version }}</option>
+          <option v-for="version in group2Versions(kind2Group(item.kind))" :key="version" :value="version">
+            {{ version }}
+          </option>
+        </select>
+        <!-- generate template (custom only) -->
+        <label :for="'template-' + index.toString()">Generate Resource Template (Custom Resource Only)</label>
+        <select
+          :id="'template-' + index.toString()"
+          v-model="item.template"
+          :disabled="!item.isCustomResource"
+          border
+          rounded
+          px-1
+          disabled-bg-light
+        >
+          <option :value="0">None</option>
+          <option :value="1">Definition</option>
+          <option :value="2">DeepCopy</option>
+          <option :value="3">Both</option>
         </select>
         <!-- package -->
         <label :for="'package-' + index.toString()">Package</label>
+        <div v-if="item.template && item.template > 0" flex gap-1>
+          <label>{{ goModule }}/</label>
+          <input
+            :id="'package-' + index.toString()"
+            v-model="item.package"
+            @change="tryResetResourceVersion(index)"
+            flex-grow
+            border
+            rounded
+            px-2
+          />
+        </div>
         <input
+          v-else
           :id="'package-' + index.toString()"
           v-model="item.package"
           :disabled="!item.isCustomResource"
@@ -717,25 +819,6 @@ function download() {
         >
           <option :value="true">Namespaced</option>
           <option :value="false">Cluster</option>
-        </select>
-        <!-- generate template (custom only) -->
-
-        <label :for="'template-' + index.toString()">Generate Resource Template</label>
-        <select
-          :id="'template-' + index.toString()"
-          v-model="item.template"
-          :disabled="
-            !item.isCustomResource || (typeof item.package !== 'undefined' && item.package.length > 0 && !item.package.startsWith(goModule))
-          "
-          @change="changeTemplate(index)"
-          border
-          rounded
-          px-1
-        >
-          <option :value="0">None</option>
-          <option :value="1">Definition</option>
-          <option :value="2">DeepCopy</option>
-          <option :value="3">Both</option>
         </select>
       </template>
       <button @click="addResource" flex items-center justify-center rounded px-1 py-1 font-sans text-sm hover:bg-gray-100>
@@ -771,21 +854,15 @@ function download() {
             >{{ f }}</a
           >
         </li>
-        <li v-for="r in resources.filter((r) => r.template && r.template > 0)" :key="r.kind">
-          <a
-            text-center
-            rounded
-            px-1
-            py-1
-            font-sans
-            text-sm
-            cursor-pointer
-            hover:bg-gray-100
-            role="tab"
-            :aria-selected="kindDeepCopyGen(r.kind) === currentFile"
-            @click="changeFile(kindDeepCopyGen(r.kind))"
-            >{{ kindDeepCopyGen(r.kind) }}</a
-          >
+        <li v-for="c in defCode" :key="c.kind">
+          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 role="tab" @click="changeFile(c.fileName)">{{
+            c.fileName
+          }}</a>
+        </li>
+        <li v-for="c in deepcopyCode" :key="c.kind">
+          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 role="tab" @click="changeFile(c.fileName)">{{
+            c.fileName
+          }}</a>
         </li>
       </ul>
 
