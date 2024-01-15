@@ -9,7 +9,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onUnmounted } from "vue";
+import { ref, onUnmounted, computed } from "vue";
 import "codemirror/mode/go/go.js";
 import "codemirror/mode/yaml/yaml.js";
 import Codemirror from "codemirror-editor-vue3";
@@ -17,16 +17,20 @@ import type { CmComponentRef } from "codemirror-editor-vue3";
 import type { EditorConfiguration } from "codemirror";
 
 interface Props {
+  mode: string;
   code: string;
 }
 
 const props = defineProps<Props>();
 
 const cmRef = ref<CmComponentRef>();
-const cmOptions: EditorConfiguration = {
-  mode: { name: "go" },
-  readOnly: true,
-};
+const legalModes = ["yaml", "go"];
+const cmOptions = computed<EditorConfiguration>(() => {  
+  return {
+    mode: { name: legalModes.includes(props.mode) ? props.mode : "" },
+    readOnly: true,
+  }
+});
 
 // const onChange = (val: string, cm: Editor) => {
 //   console.log(val);
