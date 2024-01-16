@@ -497,10 +497,10 @@ retry: ${retry.value}
 
 resources:
 ${resources.value.map(
-  (item) => item.isCustomResource ? `- group: ${item.group}
+  (item) => item.isCustomResource ? `- group: ${item.group || "undefined"}
   version: ${item.version || "v1"}
   kind: ${item.kind || "UnknownType"}
-  package: ${item.package || `""`}
+  package: ${packageName(item)}
   template: ${item.template || 0}` : `- kind: ${item.kind || "UnknownType"}`
 ).join("\n")}
 `
