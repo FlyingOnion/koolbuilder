@@ -13,7 +13,7 @@ var tmplContentGoMod string
 //go:embed tmpl/main.go.tmpl
 var tmplContentMain string
 
-//go:embed tmpl/custom.go.tmpl
+//go:embed tmpl/event_handler.go.tmpl
 var tmplContentCustom string
 
 //go:embed tmpl/controller.go.tmpl

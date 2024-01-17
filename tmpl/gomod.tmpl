@@ -3,10 +3,10 @@ module {{ .Go.Module }}
 go {{ .Go.Version }}
 
 require (
-  github.com/FlyingOnion/kool v0.1.0
+	github.com/FlyingOnion/kool v0.1.3
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/spf13/pflag v1.0.5
-	k8s.io/api v{{ .Go.K8sAPIVersion }}
 	k8s.io/apimachinery v{{ .Go.K8sAPIVersion }}
 	k8s.io/client-go v{{ .Go.K8sAPIVersion }}
+	k8s.io/klog/v2 v2.110.1
 )

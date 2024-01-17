@@ -202,7 +202,7 @@ func CreateOrRewrite(tmpl *template.Template, config *Controller) (err error) {
 
 func CreateOrRewriteDeepCopy(tmpl *template.Template, config *Controller) error {
 	for i := range config.Resources {
-		if !config.Resources[i].GenDeepCopy {
+		if !config.Resources[i].IsCustom || config.Resources[i].Template == TemplateNone {
 			continue
 		}
 

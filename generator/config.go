@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 
@@ -19,7 +18,7 @@ type Controller struct {
 	Go GoConfig `yaml:"go"`
 
 	// Enqueue   string     `yaml:"enqueue"`
-	Retry     int        `yaml:"retryOnError"`
+	Retry     int        `yaml:"retry"`
 	Namespace string     `yaml:"namespace"`
 	Resources []Resource `yaml:"resources"`
 
@@ -46,6 +45,10 @@ type Controller struct {
 	//  xxxInformer := kool.NewNamespacedInformer // namespaced
 	InformerInits []string `yaml:"-"`
 
+	// template: main
+	//  go c.xxxInformer.Informer().Run(ctx.Done())
+	InformerRuns []string `yaml:"-"`
+
 	// template: controller
 	//  func NewController(
 	//      xxxInformer kool.Informer,           // global
@@ -53,7 +56,7 @@ type Controller struct {
 	//  )
 	NewControllerArgs []string `yaml:"-"`
 
-	Imports []Import `yaml:"-"`
+	Imports []string `yaml:"-"`
 }
 
 type GoConfig struct {
@@ -61,6 +64,15 @@ type GoConfig struct {
 	Version       string
 	K8sAPIVersion string `yaml:"k8sAPIVersion"`
 }
+
+type Template int8
+
+const (
+	TemplateNone Template = iota
+	TemplateDefinition
+	TemplateDeepCopy
+	TemplateBoth
+)
 
 type Resource struct {
 	Group   string
@@ -70,16 +82,12 @@ type Resource struct {
 	Package string
 	// Alias   string
 
-	CustomHandlers []string `yaml:"customHandlers"`
-	GenDeepCopy    bool     `yaml:"genDeepCopy"`
+	Template     Template
+	IsCustom     bool
+	IsNamespaced bool
 
-	LowerKind    string `yaml:"-"`
-	GoType       string `yaml:"-"`
-	CustomAdd    bool   `yaml:"-"`
-	CustomUpdate bool   `yaml:"-"`
-	CustomDelete bool   `yaml:"-"`
-
-	ShouldRegister bool `yaml:"-"`
+	LowerKind string `yaml:"-"`
+	GoType    string `yaml:"-"`
 }
 
 type Import struct {
@@ -111,8 +119,8 @@ const (
 
 const (
 	defaultName          = "Controller"
-	defaultGoVersion     = "1.21.1"
-	defaultK8sAPIVersion = "0.28.3"
+	defaultGoVersion     = "1.21.4"
+	defaultK8sAPIVersion = "0.28.4"
 )
 
 func defaultController() *Controller {
@@ -167,17 +175,26 @@ func (c *Controller) InitAndValidate() error {
 
 	// imports is used to deal with extra imports
 	// it collects all unique imports and generates Controller.Imports
-	imports := sets.Set[Import]{}
+	imports := sets.Set[string]{}
+
+	c.ListerFields = make([]string, 0, len(c.Resources))
+	c.HasSyncedFields = make([]string, 0, len(c.Resources))
+	c.StructFieldInits = make([]string, 0, 2*len(c.Resources))
+	c.InformerInits = make([]string, 0, len(c.Resources))
+	c.InformerRuns = make([]string, 0, len(c.Resources))
+	c.NewControllerArgs = make([]string, 0, len(c.Resources))
 
 	for i := range c.Resources {
+		if len(c.Resources[i].LowerKind) == 0 || c.Resources[i].LowerKind == "UnknownType" {
+			return errors.New(msgUnknownResourceKind)
+		}
 		// field initializations
 		c.Resources[i].LowerKind = strings.ToLower(c.Resources[i].Kind)
-		c.Resources[i].CustomAdd = i == 0 || len(c.Resources[i].CustomHandlers) == 0 || slices.Contains(c.Resources[i].CustomHandlers, "Add")
-		c.Resources[i].CustomUpdate = i == 0 || len(c.Resources[i].CustomHandlers) == 0 || slices.Contains(c.Resources[i].CustomHandlers, "Update")
-		c.Resources[i].CustomDelete = i == 0 || len(c.Resources[i].CustomHandlers) == 0 || slices.Contains(c.Resources[i].CustomHandlers, "Delete")
-
-		// init group, version and package
-		initGVP(&(c.Resources[i]))
+		if c.Resources[i].IsCustom {
+			initGVPBuiltin(&(c.Resources[i]))
+		} else {
+			initGVPLocalAndThirdParty(&(c.Resources[i]))
+		}
 
 		// init go type and add import
 		if len(c.Resources[i].Group) > 0 && (len(c.Resources[i].Package) == 0 || c.Resources[i].Package == c.Go.Module) {
@@ -185,39 +202,29 @@ func (c *Controller) InitAndValidate() error {
 		} else {
 			alias := getAlias(c.Resources[i].Package)
 			c.Resources[i].GoType = alias + "." + c.Resources[i].Kind
-			imports.Insert(Import{Alias: alias, Pkg: c.Resources[i].Package})
+			imports.Insert(alias + ` "` + c.Resources[i].Package + `"`)
 		}
-
-		switch {
-		case len(c.Resources[i].Group) == 0 &&
-			c.Resources[i].GenDeepCopy:
-			log.Info(msgNoNeedToGenDeepCopy, "kind", c.Resources[i].Kind)
-			c.Resources[i].GenDeepCopy = false
-		case len(c.Resources[i].Group) > 0 &&
-			c.Resources[i].GenDeepCopy &&
-			len(c.Resources[i].Package) > 0 &&
-			!strings.HasPrefix(c.Resources[i].Package, c.Go.Module):
-			log.Info(msgShouldNotGenDeepCopy, "kind", c.Resources[i].Kind)
-			c.Resources[i].GenDeepCopy = false
+		// init ns-based fields
+		if len(c.Namespace) > 0 && c.Resources[i].IsNamespaced {
+			c.ListerFields = append(c.ListerFields, c.Resources[i].LowerKind+"Lister kool.NamespacedLister["+c.Resources[i].GoType+"]")
+			c.InformerInits = append(c.InformerInits, c.Resources[i].LowerKind+`Informer := kool.NewNamespacedInformer[`+c.Resources[i].GoType+`](client, "`+c.Namespace+`", 30*time.Second)`)
+			c.NewControllerArgs = append(c.NewControllerArgs, c.Resources[i].LowerKind+`Informer kool.NamespacedInformer[`+c.Resources[i].GoType+`],`)
+		} else {
+			c.ListerFields = append(c.ListerFields, c.Resources[i].LowerKind+"Lister kool.Lister["+c.Resources[i].GoType+"]")
+			c.InformerInits = append(c.InformerInits, c.Resources[i].LowerKind+`Informer := kool.NewInformer[`+c.Resources[i].GoType+`](client, 30*time.Second)`)
+			c.NewControllerArgs = append(c.NewControllerArgs, c.Resources[i].LowerKind+`Informer kool.Informer[`+c.Resources[i].GoType+`],`)
 		}
-
-		c.Resources[i].ShouldRegister = len(c.Resources[i].Group) > 0
+		// init ns-independent fields
+		c.HasSyncedFields = append(c.HasSyncedFields, c.Resources[i].LowerKind+"Synced cache.InformerSynced")
+		c.StructFieldInits = append(c.StructFieldInits,
+			"c."+c.Resources[i].LowerKind+"Lister = "+c.Resources[i].LowerKind+"Informer.Lister()",
+			"c."+c.Resources[i].LowerKind+"Synced = "+c.Resources[i].LowerKind+"Informer.Informer().HasSynced",
+		)
+		c.InformerRuns = append(c.InformerRuns, "go c."+c.Resources[i].LowerKind+"Informer.Informer().Run(ctx.Done())")
 	}
 	importList := imports.UnsortedList()
-	sort.Sort(ImportList(importList))
+	sort.Strings(importList)
 	c.Imports = importList
-
-	if len(c.Namespace) == 0 {
-		c.ListerFields = c.globalListerFields()
-		c.InformerInits = c.globalInformerInits()
-		c.NewControllerArgs = c.globalNewControllerArgs()
-	} else {
-		c.ListerFields = c.namespacedListerFields()
-		c.InformerInits = c.namespacedInformerInits()
-		c.NewControllerArgs = c.namespacedNewControllerArgs()
-	}
-	c.HasSyncedFields = c.hasSyncedFields()
-	c.StructFieldInits = c.structureFieldInits()
 	return nil
 }
 
@@ -283,12 +290,4 @@ func initGVPBuiltin(r *Resource) {
 			log.Warn(msgIncompatibility)
 		}
 	}
-}
-
-func initGVP(r *Resource) {
-	if len(r.Group) == 0 {
-		initGVPBuiltin(r)
-		return
-	}
-	initGVPLocalAndThirdParty(r)
 }

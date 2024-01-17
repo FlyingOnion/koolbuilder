@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -30,6 +32,8 @@ func mustGetOrLogFatal[T any](v T, err error) T {
 	return v
 }
 
+var _ schema.ObjectKind
+
 func addKnownTypes(s *runtime.Scheme) {
 {{- range .Resources }}
 {{- if .ShouldRegister }}
@@ -41,32 +45,39 @@ func addKnownTypes(s *runtime.Scheme) {
 {{ end -}}
 }
 
+func homeDirKubeConfigOrEmpty() (kubeconfig string) {
+	if h, err := os.UserHomeDir(); err == nil {
+		kubeconfig = filepath.Join(h, ".kube", "config")
+	}
+	return
+}
+
 func main() {
+	f := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	klog.InitFlags(f)
+	pflag.CommandLine.AddGoFlagSet(f)
+	
 	var kubeconfig string
 	var master string
-
-	pflag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
-	pflag.StringVar(&master, "master", "", "master url")
+	pflag.CommandLine.StringVar(&kubeconfig, "kubeconfig", homeDirKubeConfigOrEmpty(), "absolute path to the kubeconfig file")
+	pflag.CommandLine.StringVar(&master, "master", "", "master url")
 	pflag.Parse()
 
 	addKnownTypes(scheme.Scheme)
 
 	config := mustGetOrLogFatal(clientcmd.BuildConfigFromFlags(master, kubeconfig))
-	client := mustGetOrLogFatal(rest.RESTClientFor(config))
-
-	{{ range .InformerInits -}}
-	{{ . }}
-	{{ end -}}
+	httpClient := mustGetOrLogFatal(rest.RESTClientFor(config))
+	// init clients and informers
+	{{ .InformerInits | join "\n\t" }}
 	
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
-
 	controller := New{{ .Name }}({{ range .Resources }}{{ .LowerKind }}Informer, {{ end }}queue, {{ .Retry }})
 
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(context.Background())
-
+	{{ .InformerRuns | join "\n\t" }}
 	go controller.Run(ctx, 1)
 
 	select {

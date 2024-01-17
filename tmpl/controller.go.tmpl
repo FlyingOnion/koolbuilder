@@ -46,9 +46,9 @@ func New{{ .Name }}(
 	}
 	{{ range .Resources }}
 	{{- .LowerKind }}Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    {{ if .CustomAdd }}c.Add{{ .Kind }},{{ else }}nil,{{ end }}
-		UpdateFunc: {{ if .CustomUpdate }}c.Update{{ .Kind }},{{ else }}nil,{{ end }}
-		DeleteFunc: {{ if .CustomDelete }}c.Delete{{ .Kind }},{{ else }}nil,{{ end }}
+		AddFunc:    c.Add{{ .Kind }},
+		UpdateFunc: c.Update{{ .Kind }},
+		DeleteFunc: c.Delete{{ .Kind }},
 	})
 	{{ end }}
 	{{ range .StructFieldInits }}
@@ -65,8 +65,6 @@ func (c *{{ .Name }}) Run(ctx context.Context, workers int) {
 	logger := klog.FromContext(ctx)
 	logger.Info("Starting {{ (index .Resources 0).LowerKind }} controller")
 	defer logger.Info("Stopping {{ (index .Resources 0).LowerKind }} controller")
-
-	// go c.informer.Run(stopCh)
 
 	// Wait for all involved caches to be synced, before processing items from the queue is started
 	if !cache.WaitForCacheSync(ctx.Done(){{ range .Resources }}, c.{{ .LowerKind }}Synced{{ end }}) {
@@ -98,14 +96,14 @@ func (c *{{ .Name }}) processNextItem(ctx context.Context) bool {
 	defer c.queue.Done(key)
 
 	// Invoke the method containing the business logic
-	err := c.sync(ctx, key.(string))
+	err := c.sync{{ (index .Resources 0).Kind }}(ctx, key.(string))
 	// Handle the error if something went wrong during the execution of the business logic
 	c.handleErr(ctx, err, key)
 
 	return true
 }
 
-func (c *{{ .Name }}) sync(ctx context.Context, key string) error {
+func (c *{{ .Name }}) sync{{ (index .Resources 0).Kind }}(ctx context.Context, key string) error {
 	logger := klog.FromContext(ctx)
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
