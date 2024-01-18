@@ -170,7 +170,7 @@ Besides, with a lot of useful frontend libraries, I saved a lot of time writing 
 
 - [x] Add GitHub corner
 - [ ] Update go command line tool
-- [ ] Add `kool-controller.yaml` to support command line tool
+- [x] Add `config.yaml` to support command line tool
 - [x] Add `Generate Definition Struct` option
 - [x] Add `Generate DeepCopyObject` option
 - [x] Add the rest of the official resources (currently we just add some resources in `core`, `apps`, and `batch` group)
