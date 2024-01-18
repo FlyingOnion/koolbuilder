@@ -13,9 +13,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-{{ range .Imports }}
-	{{ .Alias }} {{ quote .Pkg -}}
-{{ end }}
+	{{ .Imports | join "\n\t" }}
 )
 
 var (
@@ -23,37 +21,30 @@ var (
 )
 
 type {{ .Name }} struct {
-	{{ range .ListerFields }}
-	{{- . }}
-	{{ end }}
-	{{ range .HasSyncedFields }}
-	{{- . }}
-	{{ end }}
+	{{ .ListerFields | join "\n\t" }}
+	{{ .HasSyncedFields | join "\n\t" }}
+
 	queue        workqueue.RateLimitingInterface
 	retryOnError int
 }
 
 func New{{ .Name }}(
-	{{- range .NewControllerArgs }}
-	{{ . }}
-	{{- end }}
+	{{ .NewControllerArgs | join "\n\t" }}
 	queue workqueue.RateLimitingInterface,
-    retryOnError int,
+	retryOnError int,
 ) *{{ .Name }} {
 	c := &{{ .Name }}{
 		queue:        queue,
 		retryOnError: retryOnError,
 	}
-	{{ range .Resources }}
-	{{- .LowerKind }}Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+{{- range .Resources }}
+	{{ .LowerKind }}Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.Add{{ .Kind }},
 		UpdateFunc: c.Update{{ .Kind }},
 		DeleteFunc: c.Delete{{ .Kind }},
 	})
-	{{ end }}
-	{{ range .StructFieldInits }}
-	{{- . }}
-	{{ end }}
+{{- end }}
+	{{ .StructFieldInits | join "\n\t" }}
 	return c
 }
 
@@ -110,7 +101,7 @@ func (c *{{ .Name }}) sync{{ (index .Resources 0).Kind }}(ctx context.Context, k
 		logger.Error(err, "Failed to split meta namespace cache key", "cacheKey", key)
 		return err
 	}
-	return c.doSync(ctx, namespace, name)
+	return c.doSync{{ (index .Resources 0).Kind }}(ctx, namespace, name)
 }
 
 func (c *{{ .Name }}) handleErr(ctx context.Context, err error, key any) {

@@ -27,6 +27,8 @@ var kindGroupMap = map[string]string{
 	"ReplicaSet":  apps,
 	"DaemonSet":   apps,
 
+	"HorizontalPodAutoscaler": autoscaling,
+
 	"Job":     batch,
 	"CronJob": batch,
 
@@ -70,9 +72,25 @@ func kind2Group(kind string) (group string, ok bool) {
 	return
 }
 
-var k8sBuiltinGroups = []string{apps, autoscaling, batch, core, policy, "v1"}
+var schemaGroupMap = map[string]string{
+	"core":       "",
+	"discovery":  "discovery.k8s.io",
+	"networking": "networking.k8s.io",
+	"rbac":       "rbac.authorization.k8s.io",
+	"scheduling": "scheduling.k8s.io",
+	"storage":    "storage.k8s.io",
+}
 
-const k8sBuiltinGroupsString = "apps, autoscaling, batch, core, policy, v1"
+func schemaGroup(group string) string {
+	if g, ok := schemaGroupMap[group]; ok {
+		return g
+	}
+	return group
+}
+
+var k8sBuiltinGroups = []string{apps, autoscaling, batch, core, discovery, networking, policy, rbac, scheduling, storage, "v1"}
+
+const k8sBuiltinGroupsString = "apps, autoscaling, batch, core, discovery, networking, policy, rbac, scheduling, storage, v1"
 
 func isK8sBuiltinGroup(group string) bool {
 	return slices.Contains(k8sBuiltinGroups, group) || strings.HasSuffix(group, ".k8s.io")

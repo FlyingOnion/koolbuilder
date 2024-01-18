@@ -14,7 +14,7 @@ var tmplContentGoMod string
 var tmplContentMain string
 
 //go:embed tmpl/event_handler.go.tmpl
-var tmplContentCustom string
+var tmplContentEventHandler string
 
 //go:embed tmpl/controller.go.tmpl
 var tmplContentController string
@@ -23,10 +23,10 @@ var tmplContentController string
 var tmplContentDeepCopy string
 
 var (
-	tmplBase       = template.New("base").Funcs(sprig.FuncMap())
-	tmplGoMod      = template.Must(tmplBase.New("gomod").Parse(tmplContentGoMod))
-	tmplMain       = template.Must(tmplBase.New("main").Parse(tmplContentMain))
-	tmplCustom     = template.Must(tmplBase.New("custom").Parse(tmplContentCustom))
-	tmplController = template.Must(tmplBase.New("controller").Parse(tmplContentController))
-	tmplDeepCopy   = template.Must(tmplBase.New("deepcopy").Parse(tmplContentDeepCopy))
+	tmplBase         = template.New("base").Funcs(sprig.FuncMap())
+	tmplGoMod        = template.Must(tmplBase.New("gomod").Parse(tmplContentGoMod))
+	tmplMain         = template.Must(tmplBase.New("main").Parse(tmplContentMain))
+	tmplEventHandler = template.Must(tmplBase.New("event_handler").Parse(tmplContentEventHandler))
+	tmplController   = template.Must(tmplBase.New("controller").Parse(tmplContentController))
+	tmplDeepCopy     = template.Must(tmplBase.New("deepcopy").Parse(tmplContentDeepCopy))
 )

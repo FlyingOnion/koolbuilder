@@ -36,6 +36,10 @@ const namespace = ref<string>("");
 const podResource: Resource = { ...officialResources["core"][8], isCustomResource: false, template: 0 };
 const resources = ref<Resource[]>([podResource]);
 
+const hasCustomResources = computed<boolean>(() => {
+  return resources.value.some((item) => item.isCustomResource);
+});
+
 const imports = computed<string[]>(() => {
   const set = new Set<string>();
   resources.value.forEach((item) => {
@@ -105,7 +109,8 @@ go ${goVersion.value}
 
 require (
 	github.com/FlyingOnion/kool v${koolVersion}
-	github.com/mitchellh/mapstructure v1.5.0
+	github.com/spf13/pflag v1.0.5
+	k8s.io/api v${k8sApiVersion.value}
 	k8s.io/apimachinery v${k8sApiVersion.value}
 	k8s.io/client-go v${k8sApiVersion.value}
 	k8s.io/klog/v2 v2.110.1
@@ -135,8 +140,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
-	${imports.value.map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
+	"k8s.io/klog/v2"${imports.value.map((pkg) => `
+	${getAlias(pkg)} "${pkg}"`).join("")}
 )
 
 func mustGetOrLogFatal[T any](v T, err error) T {
@@ -146,18 +151,12 @@ func mustGetOrLogFatal[T any](v T, err error) T {
 	return v
 }
 
-var _ schema.ObjectKind
-
-func addKnownTypes(s *runtime.Scheme) {
-${resources.value
+func addKnownTypes(s *runtime.Scheme) {${resources.value
   .filter((item) => item.isCustomResource)
   .map(
-    (item) =>
-`\ts.AddKnownTypes(schema.GroupVersion{
-\t\tGroup:   "${item.group || "undefined"}",
-\t\tVersion: "${item.version || "v1"}",
-\t}, &${goType(item)}{})\n`
-  )}}
+    (item) => `
+	s.AddKnownTypes(schema.GroupVersion{Group: "${item.group || "undefined"}", Version: "${item.version || "v1"}"}, &${goType(item)}{})`
+  ).join("\n\t")}${hasCustomResources.value ? "\n" : ""}}
 
 func homeDirKubeConfigOrEmpty() (kubeconfig string) {
 	if h, err := os.UserHomeDir(); err == nil {
@@ -232,7 +231,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	${imports.value.map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
+	${imports.value.sort().map((pkg) => `${getAlias(pkg)} "${pkg}"`).join("\n\t")}
 )
 
 var (
@@ -243,7 +242,6 @@ type ${controllerName.value} struct {
 ${resources.value
   .map((item) => `\t${lowerKind(item.kind)}Lister kool.${item.isNamespaced && namespace.value.length > 0 ? "Namespaced" : ""}Lister[${goType(item)}]`)
   .join("\n")}
-
 ${resources.value
   .map((item) => `\t${lowerKind(item.kind)}Synced cache.InformerSynced`)
   .join("\n")}
@@ -267,13 +265,12 @@ ${resources.value
   .map(
     (item) =>
 `\t${lowerKind(item.kind)}Informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-\t\tAddFunc: c.Add${item.kind || "UnknownType"},
+\t\tAddFunc:    c.Add${item.kind || "UnknownType"},
 \t\tUpdateFunc: c.Update${item.kind || "UnknownType"},
 \t\tDeleteFunc: c.Delete${item.kind || "UnknownType"},
 \t})`
   )
   .join("\n")}
-
 ${resources.value
   .map(
     (item) =>
@@ -294,7 +291,7 @@ func (c *${controllerName.value}) Run(ctx context.Context, workers int) {
 	defer logger.Info("Stopping ${lowerKind(resources.value[0].kind)} controller")
 
 	// Wait for all involved caches to be synced, before processing items from the queue is started
-	if !cache.WaitForCacheSync(ctx.Done()${resources.value.map((item) => `, c.${lowerKind(item.kind)}Synced`)}) {
+	if !cache.WaitForCacheSync(ctx.Done(), ${resources.value.map((item) => `c.${lowerKind(item.kind)}Synced`).join(", ")}) {
 		utilruntime.HandleError(ErrSyncTimeout)
 		return
 	}
@@ -340,7 +337,7 @@ func (c *${controllerName.value}) sync${resources.value[0].kind || "UnknownType"
 	return c.doSync${resources.value[0].kind || "UnknownType"}(ctx, namespace, name)
 }
 
-func (c *${controllerName.value}) handleErr(ctx context.Context, err error, key interface{}) {
+func (c *${controllerName.value}) handleErr(ctx context.Context, err error, key any) {
 	if err == nil {
 		c.queue.Forget(key)
 		return
@@ -442,7 +439,7 @@ ${resources.value.slice(1).map(
   (item) =>
     `
 // Add${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
-// If you don't know how to modify or don't need to customize this event, just leave it empty.
+// If you don't know how to modify or don't need to customize this event, just leave it unchanged.
 func (c *${controllerName.value}) Add${item.kind || "UnknownType"}(obj any) {
 	${lowerKind(item.kind)} := obj.(*${goType(item)})
 	// TODO: do something with ${lowerKind(item.kind)}
@@ -450,16 +447,16 @@ func (c *${controllerName.value}) Add${item.kind || "UnknownType"}(obj any) {
 }
 
 // Update${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
-// If you don't know how to modify or don't need to customize this event, just leave it empty.
-func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, newObj any) {
+// If you don't know how to modify or don't need to customize this event, just leave it unchanged.
+func (c *${controllerName.value}) Update${item.kind || "UnknownType"}(oldObj, curObj any) {
 	old := oldObj.(*${goType(item)})
-	cur := newObj.(*${goType(item)})
+	cur := curObj.(*${goType(item)})
 	// TODO: do something with old and cur
 	_, _ = old, cur
 }
 
 // Delete${item.kind || "UnknownType"} is an event handler of ${lowerKind(item.kind)}Informer.
-// If you don't know how to modify or don't need to customize this event, just leave it empty.
+// If you don't know how to modify or don't need to customize this event, just leave it unchanged.
 func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
 	${lowerKind(item.kind)}, ok := obj.(*${goType(item)})
 	if !ok {
@@ -475,9 +472,11 @@ func (c *${controllerName.value}) Delete${item.kind || "UnknownType"}(obj any) {
 			return
 		}
 	}
+	// TODO: modify expression below
+	// do something with ${lowerKind(item.kind)}
+	_ = ${lowerKind(item.kind)}
 }`
-)}
-`;
+).join("\n")}`;
 });
 // prettier-ignore
 const _yaml = computed<string>(() => {
@@ -500,7 +499,11 @@ ${resources.value.map(
   (item) => item.isCustomResource ? `- group: ${item.group || "undefined"}
   version: ${item.version || "v1"}
   kind: ${item.kind || "UnknownType"}
+  isCustom: true
+  isNamespaced: ${item.isNamespaced || false}
   package: ${packageName(item)}
+  # template:
+  # 0 = None, 1 = Definition, 2 = DeepCopy, 3 = Both
   template: ${item.template || 0}` : `- kind: ${item.kind || "UnknownType"}`
 ).join("\n")}
 `
@@ -510,7 +513,7 @@ const files: string[] = ["go.mod", "main.go", "controller.go", "event_handler.go
 const currentFile = ref<string>("main.go");
 function extension(name: string) {
   const dotIndex = name.lastIndexOf(".");
-  return dotIndex <= 0 ? "" : name.slice(dotIndex + 1)
+  return dotIndex <= 0 ? "" : name.slice(dotIndex + 1);
 }
 const filesMap: { [key: string]: ComputedRef<string> } = {
   "go.mod": _goMod,

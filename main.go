@@ -38,7 +38,7 @@ func main() {
 	mustHaveNoError(generator.CreateOrRewriteGoMod(tmplGoMod, config))
 	mustHaveNoError(generator.CreateOrRewrite(tmplMain, config))
 	mustHaveNoError(generator.CreateOrRewrite(tmplController, config))
-	mustHaveNoError(generator.CreateOrUpdateCustom(tmplCustom, config))
+	mustHaveNoError(generator.CreateOrUpdateCustom(tmplEventHandler, config))
 	mustHaveNoError(generator.CreateOrRewriteDeepCopy(tmplDeepCopy, config))
 	mustHaveNoError(generator.RunGoModTidy(config))
 	log.Info("all done")

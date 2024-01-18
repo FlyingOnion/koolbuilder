@@ -20,9 +20,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-{{ range .Imports }}
-	{{ .Alias }} {{ quote .Pkg -}}
-{{ end }}
+	{{ .Imports | join "\n\t" }}
 )
 
 func mustGetOrLogFatal[T any](v T, err error) T {
@@ -32,15 +30,10 @@ func mustGetOrLogFatal[T any](v T, err error) T {
 	return v
 }
 
-var _ schema.ObjectKind
-
 func addKnownTypes(s *runtime.Scheme) {
 {{- range .Resources }}
-{{- if .ShouldRegister }}
-	s.AddKnownTypes(schema.GroupVersion{
-		Group:   "{{ .Group }}",
-		Version: "{{ .Version }}",
-	}, &{{ .GoType }}{})
+{{- if .IsCustom }}
+	s.AddKnownTypes(schema.GroupVersion{Group: "{{ .Group }}", Version: "{{ .Version }}"}, &{{ .GoType }}{})
 {{ end -}}
 {{ end -}}
 }
@@ -66,10 +59,10 @@ func main() {
 	addKnownTypes(scheme.Scheme)
 
 	config := mustGetOrLogFatal(clientcmd.BuildConfigFromFlags(master, kubeconfig))
-	httpClient := mustGetOrLogFatal(rest.RESTClientFor(config))
+	httpClient := mustGetOrLogFatal(rest.HTTPClientFor(config))
 	// init clients and informers
 	{{ .InformerInits | join "\n\t" }}
-	
+
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
 	controller := New{{ .Name }}({{ range .Resources }}{{ .LowerKind }}Informer, {{ end }}queue, {{ .Retry }})
 
