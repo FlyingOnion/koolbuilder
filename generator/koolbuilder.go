@@ -34,9 +34,10 @@ func retrieveImports(file *ast.File) sets.Set[string] {
 
 // retrieveControllerMethods returns the methods of the controller in file custom.go
 //
-// controllerName is the name of the controller, by default "c", such as
+// controllerName is the name of the controller, by default "c"
 //
-//	func(--->c *Controller)
+//	    👇
+//	func(c *Controller)
 func retrieveControllerMethods(file *ast.File, controllerName string) sets.Set[string] {
 	methods := sets.New[string]()
 	for _, decl := range file.Decls {

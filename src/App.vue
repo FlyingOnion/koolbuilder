@@ -889,12 +889,12 @@ function download() {
           >
         </li>
         <li v-for="c in defCode" :key="c.kind">
-          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 role="tab" @click="changeFile(c.fileName)">{{
+          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 :class="{ 'bg-gray-300': c.fileName === currentFile }" role="tab" @click="changeFile(c.fileName)">{{
             c.fileName
           }}</a>
         </li>
         <li v-for="c in deepcopyCode" :key="c.kind">
-          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 role="tab" @click="changeFile(c.fileName)">{{
+          <a text-center rounded px-1 py-1 font-sans text-sm cursor-pointer hover:bg-gray-100 :class="{ 'bg-gray-300': c.fileName === currentFile }" role="tab" @click="changeFile(c.fileName)">{{
             c.fileName
           }}</a>
         </li>
